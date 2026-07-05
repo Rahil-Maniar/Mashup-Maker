@@ -11,6 +11,30 @@ from mashup_maker import analyze_structure_advanced, generate_mashup_set
 from key_finder import detect_key, get_pitch_shift_steps
 from recommender import MashupRecommender
 
+def get_safe_ydl_opts(base_opts=None):
+    """Generate yt_dlp options with browser headers and cookie support."""
+    safe = {
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 30,
+        'no_check_certificate': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive'
+        }
+    }
+    if base_opts:
+        safe.update(base_opts)
+
+    # Use a local exported cookie file if one exists in the project folder.
+    for cookie_path in ('cookies.txt', 'youtube.cookies.txt'):
+        if os.path.exists(cookie_path):
+            safe['cookiefile'] = cookie_path
+            break
+    return safe
+
 # PATCH
 if not hasattr(collections, 'MutableSequence'): collections.MutableSequence = collections.abc.MutableSequence
 if not hasattr(collections, 'Iterable'): collections.Iterable = collections.abc.Iterable
@@ -45,7 +69,12 @@ def download_track(url, label):
     target_path = filename_base + ".wav"
     if os.path.exists(target_path): return target_path
     
-    ydl_opts = {'format': 'bestaudio/best', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav', 'preferredquality': '192'}], 'outtmpl': filename_base, 'quiet': True, 'no_warnings': True}
+    ydl_opts = get_safe_ydl_opts({
+        'format': 'bestaudio/best',
+        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav', 'preferredquality': '192'}],
+        'outtmpl': filename_base,
+        'noplaylist': True
+    })
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try: ydl.download([url]); return target_path
         except: return None
@@ -57,24 +86,40 @@ def analyze_track(path):
 
 def auto_process_pair(url_a, url_b, title_a, title_b):
     try:
+        start_total = time.time()
         with st.status("🚀 Launching Engine...", expanded=True) as status:
+            # --- TRACK A ---
+            t0 = time.time()
             status.write(f"⬇️ Downloading: {title_a}...")
             path_a = download_track(url_a, "A")
+            t1 = time.time()
+            status.write(f"⏱️ *Download A took: {t1-t0:.2f}s*")
+            
             status.write(f"🧠 Analyzing: {title_a}...")
             st.session_state.song_a_data = analyze_track(path_a)
+            t2 = time.time()
+            status.write(f"⏱️ *Analysis A took: {t2-t1:.2f}s*")
             
+            # --- TRACK B ---
             status.write(f"⬇️ Downloading: {title_b}...")
             path_b = download_track(url_b, "B")
+            t3 = time.time()
+            status.write(f"⏱️ *Download B took: {t3-t2:.2f}s*")
+            
             status.write(f"🧠 Analyzing: {title_b}...")
             st.session_state.song_b_data = analyze_track(path_b)
+            t4 = time.time()
+            status.write(f"⏱️ *Analysis B took: {t4-t3:.2f}s*")
             
-            status.update(label="✅ Ready!", state="complete", expanded=False)
+            total_prep = t4 - start_total
+            status.update(label=f"✅ Ready! (Total Prep: {total_prep:.2f}s)", state="complete", expanded=False)
+            
         time.sleep(0.5); st.rerun()
     except Exception as e: st.error(f"Error: {e}")
 
 def search_youtube(query):
     try:
-        ydl_opts = {'quiet': True, 'extract_flat': True, 'dump_single_json': True}
+        ydl_opts = get_safe_ydl_opts({'extract_flat': True, 'dump_single_json': True, 'noplaylist': True})
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"ytsearch1:{query}", download=False)
             if 'entries' in info and info['entries']: return info['entries'][0]['url']
@@ -165,6 +210,7 @@ if st.session_state.song_a_data and st.session_state.song_b_data:
     styles = {
         "Standard (A on B)": "Classic Mix", 
         "The Flip (B on A)": "Reverse Mix", 
+        "The Magic Switch": "Trading 4-Bars (Interleaved)",
         "Rhythm Swap": "Hybrid Beat",
         "Deep Mode": "Instrumental Shift (Safe)",
         "Hype Mode": "Octave Shift (Creative)"
@@ -173,11 +219,18 @@ if st.session_state.song_a_data and st.session_state.song_b_data:
     sel = st.multiselect("Select Output Styles:", options=list(styles.keys()), default=["Standard (A on B)", "The Flip (B on A)"])
     
     if st.button("Generate Mashups", type="primary"):
-        with st.status("🎛️ Mixing...") as status:
+        start_gen = time.time() # Start the master clock
+        
+        with st.status("🎛️ Mixing (AI Separation in Progress)...") as status:
             res = generate_mashup_set(WORK_DIR, st.session_state.song_a_data, st.session_state.song_b_data, shift, sel)
+            
             for n, p in res.items():
                 st.write(f"✅ {n}")
                 st.audio(p, format='audio/wav')
                 with open(p, 'rb') as f: st.download_button(f"⬇️ {n}", f, file_name=os.path.basename(p))
-            status.update(label="Complete!", state="complete")
+                
+            end_gen = time.time() # Stop the master clock
+            total_gen_time = end_gen - start_gen
+            
+            status.update(label=f"✨ Complete! (Total AI & Mix Time: {total_gen_time:.2f}s)", state="complete")
             

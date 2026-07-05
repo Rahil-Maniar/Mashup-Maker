@@ -1,2 +1,10 @@
+__pycache__/
+*.pyc
+
 musicenv/
 downloads/
+
+llm_mashup.wav
+
+tracks.csv
+tracks_backup.csv

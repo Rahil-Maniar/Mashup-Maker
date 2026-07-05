@@ -1,14 +1,36 @@
 import numpy as np
+
+# NumPy 2.x compatibility for older dependencies (madmom)
+if not hasattr(np, "float"):
+    np.float = float
+if not hasattr(np, "int"):
+    np.int = int
+if not hasattr(np, "complex"):
+    np.complex = complex
 import os
+import collections
+import collections.abc
+import sys
+
+# Compatibility shim for older audio libs on newer Python versions.
+if not hasattr(collections, 'MutableSequence'):
+    collections.MutableSequence = collections.abc.MutableSequence
+if not hasattr(collections, 'Iterable'):
+    collections.Iterable = collections.abc.Iterable
+if not hasattr(collections, 'Callable'):
+    collections.Callable = collections.abc.Callable
+sys.modules['collections'].MutableSequence = collections.abc.MutableSequence
+sys.modules['collections'].Iterable = collections.abc.Iterable
+sys.modules['collections'].Callable = collections.abc.Callable
 
 # --- 1. SOTA DEEP LEARNING IMPORTS ---
 try:
     import madmom
     HAS_MADMOM = True
     print("✅ Madmom (Deep Learning) Key Detector Loaded")
-except ImportError:
+except Exception as e:
     HAS_MADMOM = False
-    print("⚠️ Madmom not found. Using Math Fallback.")
+    print(f"⚠️ Madmom unavailable ({e}). Using Math Fallback.")
 
 # --- 2. MATH FALLBACK IMPORTS ---
 import librosa

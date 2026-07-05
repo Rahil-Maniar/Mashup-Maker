@@ -1,0 +1,54 @@
+{
+  "target_bpm": 117.5,
+  "comment": "The Argument v4: blended transitions plus volume mood - her groove drops away under 'pretended like you didn't care', his synths duck under 'love me better than you can', and the finale swells into her belt then walks down instead of stopping flat.",
+  "timeline": [
+    { "bars": 27, "transition": "cut",
+      "layers": [
+        { "song": "A", "stem": "vocals",       "src_bars": [2, 29],  "gain": 0 },
+        { "song": "B", "stem": "instrumental", "src_bars": [5, 32],  "gain": -3,
+          "filter_in": 2, "filter_out": 4,
+          "volume": [{"bar": 0, "db": -4}, {"bar": 8, "db": 0}, {"bar": 23, "db": 0},
+                     {"bar": 24, "db": -5}, {"bar": 26.5, "db": -5}, {"bar": 27, "db": 0}] }
+      ] },
+    { "bars": 8, "transition": {"type": "crossfade", "bars": 4},
+      "layers": [
+        { "song": "B", "stem": "vocals",       "src_bars": [4, 12],  "gain": 0 },
+        { "song": "A", "stem": "instrumental", "src_bars": [1, 9],   "gain": -3,
+          "filter_in": 4, "filter_out": 2 }
+      ] },
+    { "bars": 5, "transition": {"type": "crossfade", "bars": 2},
+      "layers": [
+        { "song": "B", "stem": "vocals",       "src_bars": [11, 16], "gain": 0 },
+        { "song": "B", "stem": "instrumental", "src_bars": [11, 16], "gain": -2, "filter_in": 2 },
+        { "song": "FX", "stem": "riser", "gain": -8 }
+      ] },
+    { "bars": 15, "transition": "cut",
+      "layers": [
+        { "song": "A", "stem": "vocals",       "src_bars": [57, 72], "gain": 0 },
+        { "song": "B", "stem": "instrumental", "src_bars": [16, 31], "gain": -3, "filter_out": 4,
+          "volume": [{"bar": 0, "db": 1}, {"bar": 2, "db": 0}] },
+        { "song": "FX", "stem": "impact", "gain": -6 }
+      ] },
+    { "bars": 17, "transition": {"type": "crossfade", "bars": 4},
+      "layers": [
+        { "song": "B", "stem": "vocals",       "src_bars": [14, 31], "gain": 0 },
+        { "song": "A", "stem": "instrumental", "src_bars": [55, 72], "gain": -3,
+          "filter_in": 4, "filter_out": 4,
+          "volume": [{"bar": 0, "db": 0}, {"bar": 13.5, "db": 0}, {"bar": 14.5, "db": -5},
+                     {"bar": 16, "db": -5}, {"bar": 16.5, "db": 2}] }
+      ] },
+    { "bars": 8, "transition": {"type": "crossfade", "bars": 2},
+      "layers": [
+        { "song": "B", "stem": "vocals",       "src_bars": [68, 76], "gain": 0 },
+        { "song": "A", "stem": "instrumental", "src_bars": [81, 89], "gain": -5, "fade_in": 2 },
+        { "song": "FX", "stem": "riser", "gain": -10 }
+      ] },
+    { "bars": 10, "transition": {"type": "crossfade", "bars": 2},
+      "layers": [
+        { "song": "B", "stem": "vocals",       "src_bars": [87, 97], "gain": 0 },
+        { "song": "A", "stem": "instrumental", "src_bars": [89, 99], "gain": -2, "filter_in": 2,
+          "volume": [{"bar": 0, "db": -2}, {"bar": 2, "db": 1}, {"bar": 8, "db": 0}, {"bar": 10, "db": -10}] },
+        { "song": "FX", "stem": "impact", "gain": -8 }
+      ] }
+  ]
+}

@@ -1,0 +1,236 @@
+You are an expert mashup DJ and arranger. Your job: design a mashup
+arrangement of two songs, as a JSON "timeline plan" that an audio engine will render.
+You cannot hear the songs; you are given their musical data instead. Reason like an
+arranger reading a score.
+
+=== SONG DATA ===
+Each song lists: key, BPM, available stems, and a PER-BAR grid.
+Grid columns (each 0-9, relative to that song's own maximum):
+  energy = overall loudness of the bar
+  vocal  = vocal activity (0 = no vocals in this bar)
+  bass   = low-end activity
+Rows are printed every 2 bars; assume smooth values in between.
+Use the grid to find structure yourself: intros (low energy, vocal 0), verses
+(mid energy, vocal>0), hooks/drops (energy 8-9), breakdowns (energy dips), etc.
+
+--- SONG A: Song1 ---
+key: C Major   BPM: 117.5   pitch-shift applied by engine: +0 semitones
+stems you may reference: vocals, instrumental
+bar | energy vocal bass
+  1 |   5      3     7
+  3 |   6      4     7
+  5 |   8      7     9
+  7 |   7      6     8
+  9 |   8      7     9
+ 11 |   8      6     8
+ 13 |   9      7     9
+ 15 |   9      7     9
+ 17 |   8      7     9
+ 19 |   7      6     8
+ 21 |   8      7     9
+ 23 |   7      6     7
+ 25 |   8      8     8
+ 27 |   7      6     8
+ 29 |   9      8     9
+ 31 |   8      7     9
+ 33 |   8      7     9
+ 35 |   7      6     8
+ 37 |   9      8     9
+ 39 |   9      7     9
+ 41 |   9      8     9
+ 43 |   7      5     9
+ 45 |   9      8     9
+ 47 |   7      5     9
+ 49 |   8      7     9
+ 51 |   7      6     8
+ 53 |   9      9     8
+ 55 |   8      7     7
+ 57 |   9      9     9
+ 59 |   8      6     9
+ 61 |   9      8     9
+ 63 |   8      8     8
+ 65 |   9      8     9
+ 67 |   8      8     8
+ 69 |   9      9     8
+ 71 |   9      8     8
+ 73 |   9      8     9
+ 75 |   8      6     9
+ 77 |   9      8     9
+ 79 |   7      5     9
+ 81 |   4      4     4
+ 83 |   3      2     4
+ 85 |   6      7     4
+ 87 |   3      2     4
+ 89 |   9      8     8
+ 91 |   8      7     9
+ 93 |   9      8     9
+ 95 |   7      5     9
+ 97 |   9      7     9
+ 99 |   7      5     9
+101 |   8      6     9
+103 |   7      5     9
+105 |   0      0     0
+
+LYRICS A (phrase -> bar positions; decimals = phrase starts/ends mid-bar):
+bars   3.6-  7.3: I saw you dancing in a crowded room
+bars   7.3-  9.3: You look so happy when I'm not with you
+bars   9.3- 11.2: But then you saw me cut you by surprise
+bars  11.2- 13.2: A single tear dropped falling from your eye
+bars  13.2- 14.2: I don't know why
+bars  14.2- 23.3: Missed me while I broke your heart
+bars  23.3- 25.2: You could've told me that you fell apart
+bars  25.2- 26.7: But you all blessed me like I wasn't there
+bars  26.7- 29.2: And just pretended like you didn't care
+bars  29.2- 52.8: You think I said some things that I should never say
+bars  52.8- 56.9: Like someone needs a more love for me for a second time
+bars  56.9- 71.5: Another answer
+
+--- SONG B: Song2 ---
+key: C Major   BPM: 117.5   pitch-shift applied by engine: +0 semitones
+stems you may reference: vocals, instrumental
+bar | energy vocal bass
+  1 |   0      0     0
+  3 |   0      0     0
+  5 |   4      3     5
+  7 |   4      3     5
+  9 |   4      3     5
+ 11 |   4      3     5
+ 13 |   6      4     7
+ 15 |   4      5     2
+ 17 |   9      8     8
+ 19 |   8      7     8
+ 21 |   9      8     8
+ 23 |   7      5     8
+ 25 |   8      5     9
+ 27 |   9      7     9
+ 29 |   7      4     9
+ 31 |   7      4     8
+ 33 |   6      3     8
+ 35 |   7      5     8
+ 37 |   6      4     8
+ 39 |   7      4     8
+ 41 |   6      3     9
+ 43 |   7      5     8
+ 45 |   7      6     6
+ 47 |   9      8     8
+ 49 |   8      7     8
+ 51 |   8      8     8
+ 53 |   7      4     8
+ 55 |   8      5     9
+ 57 |   8      6     9
+ 59 |   7      4     9
+ 61 |   7      5     8
+ 63 |   7      5     8
+ 65 |   7      5     8
+ 67 |   7      6     8
+ 69 |   4      5     2
+ 71 |   6      7     4
+ 73 |   9      8     8
+ 75 |   8      7     8
+ 77 |   8      8     8
+ 79 |   8      5     9
+ 81 |   8      6     9
+ 83 |   9      7     9
+ 85 |   8      6     9
+ 87 |   8      7     7
+ 89 |   9      9     8
+ 91 |   8      7     8
+ 93 |   8      6     8
+ 95 |   7      3     9
+ 97 |   1      0     1
+
+LYRICS B (phrase -> bar positions; decimals = phrase starts/ends mid-bar):
+bars   4.0-  6.0: We were good, we were cold
+bars   6.0-  7.9: Kinda dream that can't be so
+bars   7.9-  9.9: We were right till we weren't
+bars   9.9- 11.9: Built a home and watched it burn
+bars  11.9- 13.3: I didn't wanna leave you
+bars  13.3- 14.3: I didn't wanna lie
+bars  14.3- 16.3: Started to cry but then remembered I
+bars  16.3- 18.2: I can buy myself flowers
+bars  18.2- 20.2: Write my name in sand
+bars  20.2- 22.1: Talk to myself for hours
+bars  22.1- 24.1: See things you don't understand
+bars  24.1- 26.0: I can take myself dancing
+bars  26.0- 28.0: And I can hold my own head
+bars  28.0- 30.4: Yeah I can love me better than you can
+bars  30.4- 31.4: Can't love me better
+bars  31.4- 32.4: Can't love me better baby
+bars  32.4- 33.4: Can't love me better
+bars  33.4- 34.4: Can't love me better baby
+bars  34.4- 35.8: Paint my nails cherry red
+bars  35.8- 37.8: Maps the roses that you left
+bars  37.8- 39.7: No remorse, no regret
+bars  39.7- 41.7: I forget every word you say
+bars  41.7- 43.2: Ooh I didn't wanna leave you baby
+bars  43.2- 44.2: I didn't wanna fight
+bars  44.2- 45.6: Started to cry but then remembered I
+bars  45.6- 47.6: I can buy myself flowers
+bars  47.6- 49.5: Write my name in sand
+bars  49.5- 51.5: Talk to myself for hours
+bars  51.5- 53.4: See things you don't understand
+bars  53.4- 55.4: I can take myself dancing
+bars  55.4- 57.4: Yeah I can hold my own head
+bars  57.4- 59.8: Yeah I can love me better than you can
+bars  59.8- 60.8: Can't love me better
+bars  60.8- 62.3: I can love me better baby
+bars  62.3- 63.2: Can't love me better
+bars  63.2- 64.2: Can't love me better baby
+bars  64.2- 65.2: Can't love me better
+bars  65.2- 66.2: I can love me better baby
+bars  66.2- 68.4: Can't love me better
+bars  68.4- 68.9: I didn't wanna leave you
+bars  68.9- 69.9: I didn't wanna fight
+bars  69.9- 72.3: Started to cry but then remembered I
+bars  72.3- 74.3: I can buy myself flowers
+bars  74.3- 75.3: By my name and say
+bars  76.2- 77.2: Talk to myself for hours
+bars  78.1- 79.2: Say things you don't understand
+bars  80.2- 81.1: I can take myself dancing
+bars  81.6- 83.1: Yeah, I can hold my hand
+bars  83.6- 85.1: Yeah, I can love me better than
+bars  85.6- 87.0: Yeah, I can love me better than
+bars  87.5- 90.1: You can't love me better than
+bars  90.1- 91.9: You can't love me better than
+bars  91.9- 94.3: You can't love me better than
+bars  94.3- 95.3: You can't love me better than
+bars  95.3- 96.3: You can't love me better than
+bars  96.3- 97.3: You can't love me better than
+bars  97.3- 98.2: You can't love me better than
+bars  98.2- 99.2: You can't love me better than
+bars  99.2-100.2: You can't love me better than
+bars 100.2-101.2: You can't love me better than
+
+NOTE: song A: stems ['instrumental', 'drums', 'bass', 'other'] are the SAME file (2-stem model); requesting any of them plays the full instrumental. song B: stems ['instrumental', 'drums', 'bass', 'other'] are the SAME file (2-stem model); requesting any of them plays the full instrumental. Therefore treat the stem palette as exactly: vocals, instrumental.
+
+=== OUTPUT FORMAT (STRICT) ===
+Output ONLY a JSON object. No markdown fences, no commentary. Schema:
+{
+  "target_bpm": <number: MUST be exactly 117.5 or 117.5>,
+  "comment": "<one sentence describing your creative idea>",
+  "timeline": [
+    { "bars": <int 4-32>, "transition": "cut" | "crossfade",
+       "layers": [
+         { "song": "A" | "B", "stem": "<one of the listed stems>",
+            "src_bars": [<start>, <end>],   // 1-based, end-exclusive; (end-start) SHOULD equal "bars"
+            "gain": <dB, -12..0> }
+       ] }
+  ]
+}
+
+=== RULES ===
+1. src_bars must stay within each song's grid (Song A has 105 bars, Song B has 97).
+2. Only reference bars where the stem is actually active (vocal layer needs vocal > 0 there).
+3. 1-3 layers per segment. Total arrangement length: 32-80 bars.
+4. Do not put two vocal layers in the same segment unless intentionally trading lines.
+5. Pitch/tempo are handled by the engine -- never compensate for them yourself.
+6. Think structure: establish -> build -> payoff -> outro. Use energy 8-9 bars as payoffs.
+7. Transitions: "cut" hits hard on a downbeat; "crossfade" blends over 1 bar.
+8. NEVER cut a vocal mid-phrase. When a layer uses vocals, its src_bars window must
+   contain complete lyric lines: start at or before floor(phrase bar_start) and end
+   after the last phrase's bar_end (e.g. phrase at 16.8-20.3 -> window [16, 21) or wider).
+9. Use the MEANING of the lyrics: pick lines that answer, echo, or argue with each
+   other across songs. Quote the key lyric of each segment in your comment.
+
+Design something with a clear creative idea (e.g. A's hook answered by B's hook,
+a stripped breakdown using one stem alone, verse/chorus source alternation).

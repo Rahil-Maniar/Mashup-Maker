@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mashup Studio</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1d29; --line:#2a2f40; --fg:#e6e9f0;
+          --mut:#8b93a7; --acc:#7c5cff; --ok:#2ecc71; --warn:#f1c40f; --bad:#ff5c5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); display:flex;
+           align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; font-weight:700; }
+  #status { margin-left:auto; font-size:13px; color:var(--mut); display:flex;
+            align-items:center; gap:6px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--bad); }
+  .dot.on { background:var(--ok); }
+  main { max-width:960px; margin:0 auto; padding:24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:18px; margin-bottom:18px; }
+  h2 { font-size:15px; margin:0 0 12px; color:var(--mut); text-transform:uppercase;
+       letter-spacing:.06em; }
+  input, textarea, select, button { font:inherit; }
+  input[type=text], textarea, select {
+    width:100%; background:#12141d; border:1px solid var(--line); color:var(--fg);
+    border-radius:8px; padding:10px 12px; }
+  textarea { min-height:120px; resize:vertical; font-family:ui-monospace,monospace; font-size:13px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px;
+           padding:10px 16px; font-weight:600; cursor:pointer; }
+  button.ghost { background:#262a3a; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:680px){ .cols{ grid-template-columns:1fr; } }
+  .slot { background:#12141d; border:1px dashed var(--line); border-radius:10px; padding:14px; }
+  .slot.filled { border-style:solid; border-color:var(--acc); }
+  .muted { color:var(--mut); font-size:13px; }
+  .res { padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .res:hover { background:#20243400; background:#1e2233; }
+  .hidden { display:none; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#12141d;
+        border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12.5px; }
+  .metric { font-size:34px; font-weight:800; }
+  .chk { display:flex; gap:8px; align-items:baseline; margin:4px 0; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  audio { width:100%; margin-top:8px; }
+  .pill { display:inline-block; background:#262a3a; border-radius:20px; padding:2px 10px;
+          font-size:12px; color:var(--mut); }
+  a { color:var(--acc); }
+  .setup code { background:#12141d; padding:2px 6px; border-radius:5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎛️ Mashup Studio</h1>
+  <div id="status"><span class="dot" id="dot"></span><span id="statusText">Companion: checking…</span></div>
+</header>
+<main>
+
+  <!-- SETUP (shown until companion is paired) -->
+  <div class="card setup" id="setupCard">
+    <h2>One-time setup</h2>
+    <p class="muted">The heavy lifting (downloading, separation, rendering) runs on <b>your</b>
+    computer via a small helper — nothing is uploaded, and it uses your machine's speed.</p>
+    <ol class="muted">
+      <li>Download the project and run <code>python companion.py</code> in its folder.</li>
+      <li>Accept the one-time terms in the terminal (type <code>I AGREE</code>).</li>
+      <li>Copy the <b>pairing token</b> it prints, and paste it below.</li>
+    </ol>
+    <div class="row">
+      <input type="text" id="tokenInput" placeholder="Paste pairing token here…" style="flex:1">
+      <button id="pairBtn">Pair</button>
+    </div>
+    <p class="muted" id="pairMsg"></p>
+  </div>
+
+  <!-- APP (shown once paired) -->
+  <div id="app" class="hidden">
+
+    <div class="card">
+      <h2>1 · Pick two songs</h2>
+      <div class="cols">
+        <div>
+          <div class="slot" id="slotA"><b>Song A</b> <span class="pill">vocal lead</span>
+            <div class="muted" id="nameA">— empty —</div></div>
+          <div class="row" style="margin-top:10px">
+            <input type="text" id="qA" placeholder="Search song A…" style="flex:1">
+            <button class="ghost" onclick="doSearch('A')">Search</button>
+          </div>
+          <div id="resA"></div>
+        </div>
+        <div>
+          <div class="slot" id="slotB"><b>Song B</b> <span class="pill">tonal anchor</span>
+            <div class="muted" id="nameB">— empty —</div></div>
+          <div class="row" style="margin-top:10px">
+            <input type="text" id="qB" placeholder="Search song B…" style="flex:1">
+            <button class="ghost" onclick="doSearch('B')">Search</button>
+          </div>
+          <div id="resB"></div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <button id="prepBtn" onclick="doPrepare()" disabled>⚗️ Prepare pair</button>
+        <span class="muted" id="prepMsg"></span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="blendCard">
+      <h2>2 · Blend verdict</h2>
+      <div class="metric" id="blendScore">—</div>
+      <div id="blendVerdict" class="muted"></div>
+      <div id="blendChecks" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card hidden" id="djCard">
+      <h2>3 · The DJ</h2>
+      <div class="row">
+        <input type="text" id="briefText" placeholder='Creative brief e.g. "melancholic late-night drive"' style="flex:2">
+        <select id="arcSel">
+          <option value="">Energy arc: (none)</option>
+          <option value="slow_burn">slow burn</option>
+          <option value="instant_banger">instant banger</option>
+          <option value="rollercoaster">rollercoaster</option>
+          <option value="waves">waves</option>
+        </select>
+        <button class="ghost" onclick="applyBrief()">Apply brief</button>
+      </div>
+      <p class="muted">Copy this prompt into your LLM (claude.ai, ChatGPT…), then paste its full reply below.</p>
+      <div class="row"><button class="ghost" onclick="copyPrompt()">📋 Copy prompt</button>
+        <span class="muted" id="copyMsg"></span></div>
+      <details style="margin-top:10px"><summary class="muted">show prompt</summary>
+        <pre id="promptBox"></pre></details>
+
+      <textarea id="planText" placeholder="Paste the LLM's reply here (reasoning + JSON is fine)…"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button onclick="doValidate()">Validate</button>
+        <button class="ghost" onclick="doRender()" id="renderBtn" disabled>🎛️ Render mashup</button>
+        <span class="muted" id="djMsg"></span>
+      </div>
+      <div id="validOut" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card hidden" id="outCard">
+      <h2>4 · Result</h2>
+      <audio id="player" controls></audio>
+      <div class="row" style="margin-top:8px">
+        <a id="dlLink" download="mashup.wav"><button class="ghost">⬇️ Download</button></a>
+      </div>
+      <details style="margin-top:12px" id="criticWrap"><summary class="muted">🧾 Critic report</summary>
+        <pre id="criticBox"></pre></details>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align:center;margin-top:24px">
+    Runs on your machine. For personal, non-commercial use.
+  </p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
