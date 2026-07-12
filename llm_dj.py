@@ -119,13 +119,25 @@ def transcribe_lyrics(vocal_path):
     model_size = os.environ.get("DJ_WHISPER_MODEL", "small")
     try:
         from faster_whisper import WhisperModel
+
+        def _run(device, compute):
+            print(f"  📝 Transcribing lyrics on {device.upper()} "
+                  f"(model '{model_size}'; first run downloads it, then this can "
+                  f"take a few minutes on CPU)...")
+            model = WhisperModel(model_size, device=device, compute_type=compute)
+            segs, _ = model.transcribe(vocal_path, vad_filter=True)
+            # consume the generator HERE so CUDA errors surface inside this call
+            out = [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()}
+                   for s in segs if s.text.strip()]
+            print(f"  📝 Lyrics done: {len(out)} lines.")
+            return out
+
         try:
-            model = WhisperModel(model_size, device="cuda", compute_type="int8_float16")
-        except Exception:
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        segs, _ = model.transcribe(vocal_path, vad_filter=True)
-        return [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()}
-                for s in segs if s.text.strip()]
+            return _run("cuda", "int8_float16")
+        except Exception as e:
+            # CUDA libs missing/broken (e.g. cublas64_12.dll) -- fall back to CPU.
+            print(f"  (GPU whisper unavailable: {type(e).__name__}: {e} -- using CPU)")
+            return _run("cpu", "int8")
     except ImportError:
         pass
     try:

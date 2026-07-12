@@ -62,25 +62,54 @@
   <!-- SETUP (shown until companion is paired) -->
   <div class="card setup" id="setupCard">
     <h2>One-time setup</h2>
-    <p class="muted">The heavy lifting (downloading, separation, rendering) runs on <b>your</b>
-    computer via a small helper — nothing is uploaded, and it uses your machine's speed.</p>
+    <p class="muted">Mashups are made <b>on your own computer</b> by a small helper app —
+    nothing is uploaded, and it uses your machine's speed.</p>
     <ol class="muted">
-      <li>Download the project and run <code>python companion.py</code> in its folder.</li>
-      <li>Accept the one-time terms in the terminal (type <code>I AGREE</code>).</li>
-      <li>Copy the <b>pairing token</b> it prints, and paste it below.</li>
+      <li><a href="mashup-studio-helper.zip" download>Download the helper</a> and unzip it anywhere
+        (your Desktop is fine).</li>
+      <li>Open the folder and double-click <b>Start&nbsp;Mashup&nbsp;Studio</b>.<br>
+        <span class="muted">Mac: the first time, <b>right-click it → Open</b>.</span></li>
+      <li>The first start installs everything by itself (a few minutes).
+        Then this page reopens on its own, ready to go — you'll just confirm the terms.</li>
     </ol>
-    <div class="row">
-      <input type="text" id="tokenInput" placeholder="Paste pairing token here…" style="flex:1">
-      <button id="pairBtn">Pair</button>
+    <details style="margin-top:10px">
+      <summary class="muted">Browser didn't reopen? Pair manually</summary>
+      <p class="muted">In the helper window, find the line <code>Pairing token:</code>
+      and copy what comes after it here:</p>
+      <div class="row">
+        <input type="text" id="tokenInput" placeholder="Paste pairing token here…" style="flex:1">
+        <button id="pairBtn">Pair</button>
+      </div>
+      <p class="muted" id="pairMsg"></p>
+    </details>
+  </div>
+
+  <!-- CONSENT (shown once paired, until terms are accepted) -->
+  <div class="card hidden" id="consentCard">
+    <h2>Before we start</h2>
+    <pre id="termsBox" style="margin-bottom:12px"></pre>
+    <label class="row muted" style="cursor:pointer">
+      <input type="checkbox" id="consentChk" style="width:auto">
+      I understand and accept the terms above.
+    </label>
+    <div class="row" style="margin-top:12px">
+      <button id="consentBtn" disabled>I agree — start making mashups</button>
+      <span class="muted" id="consentMsg"></span>
     </div>
-    <p class="muted" id="pairMsg"></p>
   </div>
 
   <!-- APP (shown once paired) -->
   <div id="app" class="hidden">
 
+    <div class="card hidden" id="gpuBanner" style="padding:12px 16px"></div>
+
     <div class="card">
       <h2>1 · Pick two songs</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button class="ghost" id="recsBtn" onclick="loadRecs()">🎲 Suggest good pairs</button>
+        <span class="muted" id="recsMsg"></span>
+      </div>
+      <div id="recsBox" style="margin-bottom:14px"></div>
       <div class="cols">
         <div>
           <div class="slot" id="slotA"><b>Song A</b> <span class="pill">vocal lead</span>
@@ -112,6 +141,10 @@
       <div class="metric" id="blendScore">—</div>
       <div id="blendVerdict" class="muted"></div>
       <div id="blendChecks" style="margin-top:10px"></div>
+      <div class="row" style="margin-top:14px">
+        <button id="autoBtn" onclick="autoMashup()">✨ Make it for me</button>
+        <span class="muted" id="autoMsg">one click, no AI chat needed — or fine-tune with the DJ below</span>
+      </div>
     </div>
 
     <div class="card hidden" id="djCard">

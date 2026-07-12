@@ -1,10 +1,20 @@
 import pandas as pd
 import random
-import streamlit as st
 import os
 import ast
 import math
 import time
+
+# Streamlit is only needed when this runs inside the old Streamlit app (app.py).
+# Under the Companion there's no streamlit -- use a no-op cache shim instead.
+try:
+    import streamlit as st
+except ImportError:
+    class _NoStreamlit:
+        @staticmethod
+        def cache_data(fn):
+            return fn
+    st = _NoStreamlit()
 
 # Prefer the scraped popular-song pool if it exists; the big tracks.csv is fallback depth only.
 CHART_CSV = "chart_tracks.csv"
@@ -72,6 +82,18 @@ class MashupRecommender:
             
         df = df.dropna(subset=['track_name', 'artists', 'tempo', 'energy', 'valence'])
 
+        # --- FIX MOJIBAKE: repair UTF-8 text that was mangled through Latin-1
+        # ("daÃ±o" -> "daño", "JacareÌ" -> "Jacaré"). Matters for YouTube queries.
+        def _demojibake(s):
+            if isinstance(s, str) and ('Ã' in s or 'Ì' in s or 'â' in s or 'Â' in s):
+                try:
+                    return s.encode('latin-1').decode('utf-8')
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    return s
+            return s
+        for col in ('track_name', 'artists'):
+            df[col] = df[col].map(_demojibake)
+
         # --- THE DYNAMIC FILTER & SANITIZER (UPDATED) ---
         # The Top 300 Artist filter has been removed! We now rely on track popularity.
         
@@ -114,6 +136,25 @@ class MashupRecommender:
         clean_str = s.replace("['", "").replace("']", "").replace("'", "")
         return ", ".join(clean_str.split(',')[:2])
 
+    @staticmethod
+    def same_song(name_a, name_b):
+        """True if two titles are the same song in disguise (remix, RMX,
+        '(w/ X)' credit variant, sped up/slowed, live, etc.) -- pairing a
+        song with its own alternate version is never a useful mashup."""
+        import re
+        def base(t):
+            t = str(t).lower()
+            t = re.sub(r"[\(\[].*?[\)\]]", " ", t)           # drop (…) and […] blocks
+            t = re.sub(r"\b(remix|rmx|remaster(ed)?|version|edit|live|acoustic|"
+                       r"sped\s*up|slowed(\s*\+?\s*reverb)?|instrumental|"
+                       r"radio|extended|vip|deluxe|w)\b", " ", t)
+            t = re.sub(r"[^a-z0-9]+", " ", t).strip()
+            return t
+        a, b = base(name_a), base(name_b)
+        if not a or not b:
+            return str(name_a).lower() == str(name_b).lower()
+        return a == b or a in b or b in a
+
     def get_camelot(self, k, m):
         h = self.major_map.get(int(k)) if m == 1 else self.minor_map.get(int(k))
         return h, ('B' if m == 1 else 'A')
@@ -126,7 +167,10 @@ class MashupRecommender:
         dist = math.sqrt((row_a['energy'] - row_b['energy'])**2 + (row_a['valence'] - row_b['valence'])**2)
         return (dist / 1.41) * 30
 
-    def discover_mashups(self, n=5):
+    def discover_mashups(self, n=5, exclude=None):
+        """exclude: set of pair_id tuples (sorted track-name pairs) to skip,
+        so repeated rolls in one session don't show the same pairs."""
+        exclude = exclude or set()
         if self.df.empty: return []
         
         # --- POOLS ---
@@ -151,7 +195,7 @@ class MashupRecommender:
         
         for _, a in pool_a.iterrows():
             for _, b in pool_b.iterrows():
-                if a['track_name'] == b['track_name']: continue
+                if self.same_song(a['track_name'], b['track_name']): continue
                 
                 # --- ULTRA-SAFE PRE-FILTER ---
                 # Keep only near-1:1 tempo matches to reduce downstream QC warnings.
@@ -207,7 +251,9 @@ class MashupRecommender:
 
         candidates.sort(key=lambda x: x['rank_score'], reverse=True)
 
-        top_slice = candidates[: max(n * 3, n)]
+        # A wide slice keeps quality high while giving rolls real variety
+        # (the old n*3 slice made every roll draw from the same ~12 pairs).
+        top_slice = candidates[: max(n * 10, 40)]
         random.shuffle(top_slice)
 
         final_list = []
@@ -218,7 +264,7 @@ class MashupRecommender:
             ta, tb = c['a']['track_name'], c['b']['track_name']
             aa, bb = self.clean_artist(c['a']['artists']), self.clean_artist(c['b']['artists'])
             pair_id = tuple(sorted([ta, tb]))
-            if pair_id in used:
+            if pair_id in used or pair_id in exclude:
                 continue
             used.add(pair_id)
             pop = int((float(c['a'].get('popularity', 50) or 50) +

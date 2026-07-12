@@ -13,8 +13,9 @@ Design principles:
 - Pairing token: every request must carry X-Companion-Token. The token is
   printed at startup; the web UI asks for it once and stores it.
 - Origin allowlist: only the configured web-app origins may call this server.
-- First-run consent gate: refuses to serve until the user has explicitly
-  accepted the terms (stored in companion_consent.json).
+- First-run consent gate: heavy endpoints refuse to serve until the user has
+  explicitly accepted the terms IN THE WEB APP (one click; stored in
+  companion_consent.json). The terminal never blocks on input.
 
 Run:  python companion.py
 """
@@ -25,6 +26,7 @@ import time
 import secrets
 import threading
 import traceback
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -32,6 +34,11 @@ PORT = 7777
 WORK_DIR = "downloads"
 CONSENT_FILE = "companion_consent.json"
 TOKEN_FILE = "companion_token.txt"
+
+# Your hosted web UI. When set, the Companion auto-opens the browser here with
+# the pairing token in the #fragment (never sent to any server), so users are
+# paired automatically -- no copy/paste. Leave "" to disable auto-open.
+APP_URL = os.environ.get("MASHUP_APP_URL", "")   # e.g. "https://your-app.pages.dev"
 
 # Origins allowed to talk to this Companion. Add your hosted URL here.
 ALLOWED_ORIGINS = {
@@ -41,38 +48,45 @@ ALLOWED_ORIGINS = {
     # "https://your-app.pages.dev",   # <- add your hosted UI origin
 }
 
-CONSENT_TEXT = """
-=== MASHUP STUDIO COMPANION - PLEASE READ ===
+CONSENT_TEXT = """This helper runs ON YOUR COMPUTER and, when you use the web app, will:
 
-This program runs ON YOUR COMPUTER and, when you use the web app, will:
-  1. Search YouTube and DOWNLOAD audio to this machine, over YOUR internet
-     connection, at your request.
+  1. Search YouTube and DOWNLOAD audio to this machine, over YOUR internet \
+connection and IP address, at your request.
   2. Process that audio locally (stem separation, analysis, mashup rendering).
 
-Downloading may violate YouTube's Terms of Service and, depending on your
-country, copyright law. Outputs are for PERSONAL, non-commercial use.
-You are responsible for your own use of this tool. Nothing is uploaded
-anywhere; all audio stays on this machine.
-
-Type 'I AGREE' to accept and start the Companion, anything else to quit.
-"""
+Downloading may violate YouTube's Terms of Service and, depending on your \
+country, copyright law. Outputs are for PERSONAL, non-commercial use. \
+You are responsible for your own use of this tool. Nothing is uploaded \
+anywhere; all audio stays on this machine."""
 
 # one heavy job at a time (single GPU)
 JOB_LOCK = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# progress reporting (the UI polls GET /progress during long jobs)
+# ---------------------------------------------------------------------------
+_PROGRESS = {"stage": "idle", "detail": "", "step": 0, "steps": 0,
+             "busy": False, "ts": 0.0}
+_PROGRESS_LOCK = threading.Lock()
+
+
+def set_progress(stage, detail="", step=0, steps=0):
+    with _PROGRESS_LOCK:
+        _PROGRESS.update(stage=stage, detail=detail, step=step, steps=steps,
+                         busy=stage not in ("idle",), ts=time.time())
 
 
 # ---------------------------------------------------------------------------
 # consent + token
 # ---------------------------------------------------------------------------
-def ensure_consent():
-    if os.path.exists(CONSENT_FILE):
-        return True
-    print(CONSENT_TEXT)
-    if input("> ").strip().upper() == "I AGREE":
-        with open(CONSENT_FILE, "w") as f:
-            json.dump({"accepted_at": time.time()}, f)
-        return True
-    return False
+def has_consent():
+    return os.path.exists(CONSENT_FILE)
+
+
+def record_consent(origin):
+    with open(CONSENT_FILE, "w") as f:
+        json.dump({"accepted_at": time.time(),
+                   "accepted_via": origin or "local"}, f)
 
 
 def get_token():
@@ -95,6 +109,28 @@ def op_search(q):
     return {"results": search(q + " audio")}
 
 
+_RECOMMENDER = None
+_SHOWN_PAIRS = set()   # pairs already suggested this session -- rolls stay fresh
+
+def op_recommend(n):
+    """Suggest compatible song pairs from the local chart/tracks database."""
+    global _RECOMMENDER
+    if _RECOMMENDER is None:
+        from recommender import MashupRecommender
+        _RECOMMENDER = MashupRecommender("tracks.csv")   # prefers chart_tracks.csv if present
+    if _RECOMMENDER.df.empty:
+        raise RuntimeError("no song database found (need chart_tracks.csv or tracks.csv "
+                           "next to companion.py)")
+    pairs = _RECOMMENDER.discover_mashups(n, exclude=_SHOWN_PAIRS)
+    if len(pairs) < n and _SHOWN_PAIRS:
+        # we've cycled through everything fresh -- start over
+        _SHOWN_PAIRS.clear()
+        pairs = _RECOMMENDER.discover_mashups(n)
+    for p in pairs:
+        _SHOWN_PAIRS.add(tuple(sorted([p["song_a"]["title"], p["song_b"]["title"]])))
+    return {"pairs": pairs}
+
+
 def op_download(url, title):
     from get_song import download
     path = download(url, name_hint=title)
@@ -112,10 +148,15 @@ def op_prepare(path_a, path_b, name_a, name_b):
     if file_hash(path_a) == file_hash(path_b):
         raise ValueError("Both slots contain the same audio file.")
 
+    STEPS = 8
     songs, grids, lyrics = {}, {}, {}
     names = {"A": name_a, "B": name_b}
+    step = 1
     for sid, path in (("A", path_a), ("B", path_b)):
+        set_progress("prepare", f"Analyzing \u201c{names[sid]}\u201d (beat + key)", step, STEPS); step += 1
         meta = analyze_song(path)
+        set_progress("prepare", f"Separating vocals from \u201c{names[sid]}\u201d "
+                                f"\u2014 the slow part, several minutes on CPU", step, STEPS); step += 1
         stems = separate_full_song(path, WORK_DIR)
         if not stems:
             raise RuntimeError(f"separation failed for {names[sid]}")
@@ -125,10 +166,12 @@ def op_prepare(path_a, path_b, name_a, name_b):
     sa, sb = compute_shifts(songs["A"]["key"], songs["B"]["key"])
     songs["A"]["shift"], songs["B"]["shift"] = sa, sb
     for sid in ("A", "B"):
+        set_progress("prepare", f"Listening for lyrics in \u201c{names[sid]}\u201d", step, STEPS); step += 1
         grids[sid] = bar_grid(songs[sid])
         segs = transcribe_lyrics(songs[sid]["stems"]["vocals"])
         lyrics[sid] = lyrics_to_bar_lines(segs, songs[sid]["bpm"], songs[sid]["grid_start"])
 
+    set_progress("prepare", "Writing the DJ briefing", STEPS, STEPS)
     session = {"songs": songs, "names": names, "grids": grids, "lyrics": lyrics}
     with open("dj_session.json", "w") as f:
         json.dump(session, f, indent=2)
@@ -162,10 +205,98 @@ def op_validate(session, plan_text):
 def op_render(session, plan):
     from dsl_renderer import render_plan
     from critic import critique_render
+    set_progress("render", "Stretching and mixing stems", 1, 2)
     out, report = render_plan(plan, session["songs"], "llm_mashup.wav")
+    set_progress("render", "Running the quality check", 2, 2)
     res = critique_render(out, plan, session)
     return {"file": out, "render_report": report, "critic": res["report"],
             "flags": res["flags"]}
+
+
+def op_auto_mashup(session):
+    """One-click path: build a default arrangement (no LLM) and render it."""
+    from studio_logic import auto_plan
+    from dsl_renderer import validate_plan, render_plan
+    from critic import critique_render
+    set_progress("auto", "Designing an arrangement", 1, 3)
+    plan = auto_plan(session)
+    errors, warnings = validate_plan(plan, session["songs"])
+    if errors:
+        raise RuntimeError("auto-plan failed validation: " + "; ".join(errors[:3]))
+    set_progress("auto", "Mixing your mashup", 2, 3)
+    out, report = render_plan(plan, session["songs"], "llm_mashup.wav")
+    set_progress("auto", "Running the quality check", 3, 3)
+    res = critique_render(out, plan, session)
+    return {"plan": plan, "file": out, "render_report": report,
+            "critic": res["report"], "flags": res["flags"],
+            "warnings": warnings}
+
+
+# ---------------------------------------------------------------------------
+# GPU acceleration (detect always; install only on explicit user opt-in)
+# ---------------------------------------------------------------------------
+_GPU = {"installing": False, "restart_needed": False, "error": None}
+
+
+def _gpu_present():
+    from shutil import which
+    return which("nvidia-smi") is not None
+
+
+def _gpu_accelerated():
+    try:
+        from importlib.metadata import version
+        version("onnxruntime-gpu")
+        return True
+    except Exception:
+        return False
+
+
+def gpu_state():
+    return {"present": _gpu_present(), "accelerated": _gpu_accelerated(),
+            "installing": _GPU["installing"],
+            "restart_needed": _GPU["restart_needed"], "error": _GPU["error"]}
+
+
+def _gpu_install_worker():
+    """Installs CUDA runtime wheels + onnxruntime-gpu into THIS venv.
+    Runs in a background thread; any failure leaves the CPU setup untouched."""
+    import subprocess
+    import sys
+    from shutil import which
+    uv = which("uv")
+
+    def run(args, check=True):
+        return subprocess.run(args, check=check, capture_output=True, text=True)
+
+    try:
+        set_progress("gpu", "Downloading GPU libraries (~2.5 GB) \u2014 "
+                            "keep the helper window open")
+        if uv:
+            run([uv, "pip", "install", "--python", sys.executable,
+                 "nvidia-cublas-cu12", "nvidia-cudnn-cu12"])
+            set_progress("gpu", "Swapping in the GPU audio engine")
+            run([uv, "pip", "uninstall", "--python", sys.executable,
+                 "onnxruntime"], check=False)
+            run([uv, "pip", "install", "--python", sys.executable,
+                 "onnxruntime-gpu"])
+        else:
+            run([sys.executable, "-m", "pip", "install",
+                 "nvidia-cublas-cu12", "nvidia-cudnn-cu12"])
+            set_progress("gpu", "Swapping in the GPU audio engine")
+            run([sys.executable, "-m", "pip", "uninstall", "-y",
+                 "onnxruntime"], check=False)
+            run([sys.executable, "-m", "pip", "install", "onnxruntime-gpu"])
+        _GPU.update(restart_needed=True, error=None)
+        print("  GPU acceleration installed -- restart the helper to use it.")
+    except subprocess.CalledProcessError as e:
+        _GPU["error"] = ((e.stderr or e.stdout or str(e)) or "")[-500:]
+        print("  GPU install failed (CPU mode still works fine).")
+    except Exception as e:
+        _GPU["error"] = str(e)
+    finally:
+        _GPU["installing"] = False
+        set_progress("idle")
 
 
 # ---------------------------------------------------------------------------
@@ -222,17 +353,40 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
 
         if url.path == "/health":
-            return self._json(200, {"ok": True, "name": "mashup-companion",
-                                    "authed": self._authed()})
+            out = {"ok": True, "name": "mashup-companion",
+                   "authed": self._authed(), "consented": has_consent(),
+                   "gpu": gpu_state()}
+            if not has_consent():
+                out["terms"] = CONSENT_TEXT
+            return self._json(200, out)
 
         if not self._authed():
             return self._json(401, {"error": "missing/invalid X-Companion-Token"})
+
+        if url.path == "/whoami":
+            # cheap token test for pairing -- no side effects
+            return self._json(200, {"ok": True, "consented": has_consent()})
+
+        if url.path == "/progress":
+            with _PROGRESS_LOCK:
+                return self._json(200, dict(_PROGRESS))
+
+        if not has_consent():
+            return self._json(403, {"error": "consent required -- accept the terms in the web app"})
 
         if url.path == "/search":
             q = (parse_qs(url.query).get("q") or [""])[0]
             if not q:
                 return self._json(400, {"error": "q required"})
             return self._run(op_search, q)
+
+        if url.path == "/recommend":
+            n = (parse_qs(url.query).get("n") or ["4"])[0]
+            try:
+                n = max(1, min(8, int(n)))
+            except ValueError:
+                n = 4
+            return self._run(op_recommend, n)
 
         if url.path == "/audio":
             f = (parse_qs(url.query).get("file") or [""])[0]
@@ -264,6 +418,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "invalid JSON body"})
         p = urlparse(self.path).path
 
+        if p == "/consent":
+            if body.get("accept") is not True:
+                return self._json(400, {"error": "send {\"accept\": true} to accept the terms"})
+            record_consent(self.headers.get("Origin"))
+            return self._json(200, {"ok": True, "consented": True})
+
+        if not has_consent():
+            return self._json(403, {"error": "consent required -- accept the terms in the web app"})
+
         if p == "/download":
             return self._run(op_download, body.get("url", ""), body.get("title", "song"))
         if p == "/prepare":
@@ -275,6 +438,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(op_validate, body["session"], body.get("plan_text", ""))
         if p == "/render":
             return self._run_locked(op_render, body["session"], body["plan"])
+        if p == "/auto_mashup":
+            return self._run_locked(op_auto_mashup, body["session"])
+        if p == "/gpu/enable":
+            if _gpu_accelerated():
+                return self._json(200, {"ok": True, "already": True})
+            if not _gpu_present():
+                return self._json(400, {"error": "no NVIDIA GPU detected"})
+            if not _GPU["installing"]:
+                _GPU.update(installing=True, error=None)
+                threading.Thread(target=_gpu_install_worker, daemon=True).start()
+            return self._json(200, {"ok": True, "installing": True})
         return self._json(404, {"error": "unknown endpoint"})
 
     # ---- execution wrappers ----
@@ -291,22 +465,63 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return self._run(fn, *args)
         finally:
+            set_progress("idle")
             JOB_LOCK.release()
+
+
+def _enable_cuda_dlls():
+    """Windows: make bundled CUDA DLLs findable so faster-whisper and
+    onnxruntime-gpu can use the GPU. Covers two pip layouts:
+      - nvidia-cublas-cu12 / nvidia-cudnn-cu12  -> site-packages/nvidia/*/bin
+      - CUDA builds of torch (e.g. 2.5.1+cu121) -> site-packages/torch/lib
+    No-op on non-Windows or when nothing is installed."""
+    if os.name != "nt":
+        return
+    try:
+        import site
+        dirs = []
+        for sp in site.getsitepackages():
+            nv = os.path.join(sp, "nvidia")
+            if os.path.isdir(nv):
+                for pkg in os.listdir(nv):
+                    b = os.path.join(nv, pkg, "bin")
+                    if os.path.isdir(b):
+                        dirs.append(b)
+            tl = os.path.join(sp, "torch", "lib")
+            if os.path.isdir(tl):
+                dirs.append(tl)
+        for d in dirs:
+            os.add_dll_directory(d)
+            os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
 
 
 def main():
     global TOKEN
-    if not ensure_consent():
-        print("Terms not accepted -- exiting.")
-        return
     os.makedirs(WORK_DIR, exist_ok=True)
     TOKEN = get_token()
+    _enable_cuda_dlls()
+    try:  # bundle ffmpeg/ffprobe for yt-dlp + whisper (downloads once, ~80 MB)
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+    except ImportError:
+        pass  # fine if ffmpeg is already installed system-wide
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print("=" * 60)
-    print(f"  Mashup Companion running at http://127.0.0.1:{PORT}")
-    print(f"  Pairing token: {TOKEN}")
-    print("  Paste this token into the web app when it asks.")
-    print("  (Token also saved to companion_token.txt)")
+    print("  Mashup Studio helper is running.")
+    if APP_URL:
+        pair_url = f"{APP_URL.rstrip('/')}/#token={TOKEN}"
+        print("  Opening the app in your browser...")
+        print(f"  (If it doesn't open, visit: {pair_url})")
+        threading.Timer(1.0, webbrowser.open, args=(pair_url,)).start()
+    else:
+        print(f"  Pairing token: {TOKEN}")
+        print("  Paste this token into the web app when it asks.")
+        print("  (Token also saved to companion_token.txt)")
+    if not has_consent():
+        print("  First run: you'll be asked to accept the terms in the web app.")
+    print("  Keep this window open while you use Mashup Studio.")
     print("=" * 60)
     srv.serve_forever()
 

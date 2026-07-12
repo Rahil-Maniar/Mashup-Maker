@@ -158,16 +158,38 @@ def _apply_shape(layer, sr, bar_samps, fade_in=0, fade_out=0, filter_in=0, filte
     return layer
 
 
+def _swept_noise(L, sr, f_from, f_to, rng):
+    """White noise through a time-varying lowpass sweeping f_from -> f_to.
+    Implemented as 8 pre-filtered banks blended over time (click-free)."""
+    noise = rng.standard_normal(L).astype(np.float32)
+    K = 8
+    cuts = np.geomspace(max(120.0, min(f_from, f_to)),
+                        min(sr / 2 * 0.9, max(f_from, f_to)), K)
+    if f_from > f_to:
+        cuts = cuts[::-1]
+    banks = []
+    for c in cuts:
+        sos = butter(4, c / (sr / 2), btype='low', output='sos')
+        banks.append(sosfiltfilt(sos, noise).astype(np.float32))
+    banks = np.stack(banks)                              # (K, L)
+    pos = np.linspace(0, K - 1, L, dtype=np.float32)
+    i0 = np.clip(pos.astype(np.int32), 0, K - 2)
+    frac = pos - i0
+    idx = np.arange(L)
+    sig = banks[i0, idx] * (1 - frac) + banks[i0 + 1, idx] * frac
+    return sig / (np.abs(sig).max() + 1e-9)
+
+
 def _synth_fx(stem, seg_len, sr, bar_samps, length_bars=None):
-    """Synthesized transition FX, placed within the segment."""
+    """Synthesized transition FX, placed within the segment. Noise is always
+    filter-swept (never raw broadband static)."""
     out = np.zeros((2, seg_len), dtype=np.float32)
     rng = np.random.default_rng(7)
-    if stem == "riser":                     # noise swell over the LAST bars
+    if stem == "riser":                     # filtered swell over the LAST bars:
         L = min(seg_len, int((length_bars or 4) * bar_samps))
         t = np.linspace(0.0, 1.0, L, dtype=np.float32)
-        noise = rng.standard_normal(L).astype(np.float32)
-        bright = np.diff(noise, prepend=0.0).astype(np.float32)   # brightens as it rises
-        sig = (0.5 * noise + 0.5 * bright * t) * (t ** 3) * 0.5
+        sig = _swept_noise(L, sr, 350.0, 9000.0, rng)     # opens up as it rises
+        sig *= (t ** 2.5) * 0.4                            # late, smooth swell
         out[:, seg_len - L:] = sig
     elif stem == "impact":                  # boom on the segment's first beat
         L = min(seg_len, int(1.5 * sr))
@@ -176,11 +198,14 @@ def _synth_fx(stem, seg_len, sr, bar_samps, length_bars=None):
         nb = min(L, int(0.05 * sr))
         burst = np.zeros(L, dtype=np.float32)
         burst[:nb] = rng.standard_normal(nb).astype(np.float32) * np.exp(-np.arange(nb) / (0.012 * sr))
+        sos = butter(4, 2500.0 / (sr / 2), btype='low', output='sos')  # tame the click
+        burst = sosfiltfilt(sos, burst).astype(np.float32)
         out[:, :L] = (0.9 * boom + 0.5 * burst) * 0.8
-    elif stem == "sweep_down":              # decaying noise tail from the start
+    elif stem == "sweep_down":              # filtered tail closing down from the start
         L = min(seg_len, int((length_bars or 2) * bar_samps))
         t = np.linspace(1.0, 0.0, L, dtype=np.float32)
-        out[:, :L] = rng.standard_normal(L).astype(np.float32) * (t ** 2) * 0.4
+        sig = _swept_noise(L, sr, 9000.0, 350.0, rng)      # darkens as it falls
+        out[:, :L] = sig * (t ** 2) * 0.3
     return out
 
 
@@ -407,6 +432,13 @@ def render_plan(plan, songs, output_path, sr=44100, verbose=True):
             ov = min(xb * bar_samps, cursor, mix.shape[1])
             if ov > 0:
                 fade = np.sqrt(np.linspace(0, 1, ov, dtype=np.float32))
+                # bass swap: the outgoing tail progressively loses its low end
+                # so the two songs' basslines never collide (kills the mud)
+                if ov > sr // 8:
+                    tail = out[:, cursor - ov:cursor]
+                    hp = _thin(tail, sr, cutoff=220.0)
+                    w = np.linspace(0.0, 1.0, ov, dtype=np.float32) ** 0.7
+                    out[:, cursor - ov:cursor] = tail * (1.0 - w) + hp * w
                 out[:, cursor - ov:cursor] *= fade[::-1]
                 mix = mix.copy()
                 mix[:, :ov] *= fade

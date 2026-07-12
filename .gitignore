@@ -8,3 +8,6 @@ llm_mashup.wav
 
 tracks.csv
 tracks_backup.csv
+
+companion_consent.json
+companion_token.txt
