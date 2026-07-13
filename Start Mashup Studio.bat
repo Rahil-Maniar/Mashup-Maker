@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 rem Optional: your hosted web app URL (used for auto-opening the browser,
 rem must also be in ALLOWED_ORIGINS in companion.py). Uncomment and edit:
-set "MASHUP_APP_URL=http://localhost:3000"
+set "MASHUP_APP_URL=https://rahil-maniar.github.io/"
 
 rem ---- make sure the uv helper exists (installs Python + packages for us) ----
 where uv >nul 2>nul
