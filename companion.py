@@ -38,14 +38,16 @@ TOKEN_FILE = "companion_token.txt"
 # Your hosted web UI. When set, the Companion auto-opens the browser here with
 # the pairing token in the #fragment (never sent to any server), so users are
 # paired automatically -- no copy/paste. Leave "" to disable auto-open.
-APP_URL = os.environ.get("MASHUP_APP_URL", "")   # e.g. "https://your-app.pages.dev"
+APP_URL = os.environ.get("MASHUP_APP_URL",
+                         "https://rahil-maniar.github.io/Mashup-Maker")
 
-# Origins allowed to talk to this Companion. Add your hosted URL here.
+# Origins allowed to talk to this Companion. NOTE: an Origin is scheme+host
+# only -- never include the /Mashup-Maker path here.
 ALLOWED_ORIGINS = {
+    "https://rahil-maniar.github.io",
     "http://localhost:8501",
     "http://127.0.0.1:8501",
     "http://localhost:3000",
-    # "https://your-app.pages.dev",   # <- add your hosted UI origin
 }
 
 CONSENT_TEXT = """This helper runs ON YOUR COMPUTER and, when you use the web app, will:
