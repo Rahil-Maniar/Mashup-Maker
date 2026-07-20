@@ -61,7 +61,7 @@ function updateGpuBanner(g) {
     b.classList.remove("hidden");
     b.innerHTML = `⚡ Installing GPU acceleration — keep the helper window open…
       <div class="gpu-bar"><div class="gpu-bar-fill"></div></div>
-      <span id="gpuDetail" class="muted">Starting download…</span>`;
+      <span id="gpuDetail" class="muted">Starting…</span>`;
     startGpuWatch();
     return;
   }
@@ -87,8 +87,8 @@ function updateGpuBanner(g) {
   b.classList.add("hidden");
 }
 
-// While the GPU install runs, poll /progress for per-package detail and
-// /health for state changes (done / failed). Stops itself when idle.
+// While GPU install runs, poll /progress for per-package detail and /health
+// for completion. Stops itself when the stage leaves "gpu".
 let gpuTimer = null;
 function startGpuWatch() {
   if (gpuTimer) return;
@@ -100,12 +100,12 @@ function startGpuWatch() {
         const step = p.steps ? ` (step ${p.step} of ${p.steps})` : "";
         el.textContent = p.detail + step + "…";
       }
-      if (p.stage !== "gpu") {           // finished or failed
+      if (p.stage !== "gpu") {
         clearInterval(gpuTimer); gpuTimer = null;
         const h = await call("/health", { auth: false });
         updateGpuBanner(h.gpu);
       }
-    } catch { /* companion busy; keep last message */ }
+    } catch { /* companion briefly busy; keep last message */ }
   }, 2000);
 }
 
