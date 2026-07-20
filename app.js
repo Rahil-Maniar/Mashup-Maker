@@ -59,7 +59,10 @@ function updateGpuBanner(g) {
   }
   if (g.installing) {
     b.classList.remove("hidden");
-    b.innerHTML = `⚡ Installing GPU acceleration — big download, keep the helper window open…`;
+    b.innerHTML = `⚡ Installing GPU acceleration — keep the helper window open…
+      <div class="gpu-bar"><div class="gpu-bar-fill"></div></div>
+      <span id="gpuDetail" class="muted">Starting download…</span>`;
+    startGpuWatch();
     return;
   }
   if (g.error) {
@@ -70,15 +73,40 @@ function updateGpuBanner(g) {
   if (g.present && !g.accelerated) {
     b.classList.remove("hidden");
     b.innerHTML = `⚡ Your computer has a gaming graphics card — mashups can be <b>much faster</b>. ` +
-      `<button id="gpuBtn">Enable (one-time ~2.5 GB download)</button>`;
+      `<button id="gpuBtn">Enable (one-time ~5 GB download)</button>`;
     $("gpuBtn").onclick = async () => {
       $("gpuBtn").disabled = true;
-      try { await call("/gpu/enable", { method: "POST", body: {} }); }
+      try {
+        await call("/gpu/enable", { method: "POST", body: {} });
+        updateGpuBanner({ installing: true });
+      }
       catch (e) { b.innerHTML = `<span class="bad">${e.message}</span>`; }
     };
     return;
   }
   b.classList.add("hidden");
+}
+
+// While the GPU install runs, poll /progress for per-package detail and
+// /health for state changes (done / failed). Stops itself when idle.
+let gpuTimer = null;
+function startGpuWatch() {
+  if (gpuTimer) return;
+  gpuTimer = setInterval(async () => {
+    try {
+      const p = await call("/progress");
+      const el = $("gpuDetail");
+      if (el && p.stage === "gpu" && p.detail) {
+        const step = p.steps ? ` (step ${p.step} of ${p.steps})` : "";
+        el.textContent = p.detail + step + "…";
+      }
+      if (p.stage !== "gpu") {           // finished or failed
+        clearInterval(gpuTimer); gpuTimer = null;
+        const h = await call("/health", { auth: false });
+        updateGpuBanner(h.gpu);
+      }
+    } catch { /* companion busy; keep last message */ }
+  }, 2000);
 }
 
 // ---- companion detection + pairing + consent ----

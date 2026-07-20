@@ -50,6 +50,14 @@
           font-size:12px; color:var(--mut); }
   a { color:var(--acc); }
   .setup code { background:#12141d; padding:2px 6px; border-radius:5px; }
+
+.gpu-bar { height: 6px; border-radius: 3px; overflow: hidden;
+  background: rgba(255,255,255,.12); margin: 8px 0 6px; }
+.gpu-bar-fill { height: 100%; width: 40%; border-radius: 3px;
+  background: linear-gradient(90deg, #7c5cff, #38bdf8);
+  animation: gpuSlide 1.4s ease-in-out infinite; }
+@keyframes gpuSlide {
+  0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 </style>
 </head>
 <body>

@@ -246,10 +246,14 @@ def _gpu_present():
 
 
 def _gpu_accelerated():
+    """True only when BOTH GPU pieces are in place: onnxruntime-gpu AND a
+    CUDA build of torch. audio-separator gates hardware acceleration on
+    torch.cuda.is_available(), so CPU-wheel torch (e.g. '2.13.0+cpu')
+    silently forces CPU mode even with onnxruntime-gpu installed."""
     try:
         from importlib.metadata import version
         version("onnxruntime-gpu")
-        return True
+        return "+cu" in version("torch")
     except Exception:
         return False
 
@@ -262,37 +266,77 @@ def gpu_state():
 
 def _gpu_install_worker():
     """Installs CUDA runtime wheels + onnxruntime-gpu into THIS venv.
-    Runs in a background thread; any failure leaves the CPU setup untouched."""
+    Runs in a background thread; any failure leaves the CPU setup untouched.
+    Streams installer output so the UI can show live per-package progress."""
+    import re
     import subprocess
     import sys
     from shutil import which
     uv = which("uv")
 
-    def run(args, check=True):
-        return subprocess.run(args, check=check, capture_output=True, text=True)
+    def stream(args, step, steps, fallback_msg, check=True):
+        """Run an installer, forwarding its per-package lines to set_progress.
+        uv/pip print lines like 'Downloading nvidia-cudnn-cu12 (664.8MiB)'."""
+        set_progress("gpu", fallback_msg, step, steps)
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                bufsize=1, errors="replace")
+        tail = []
+        pat = re.compile(r"(Downloading|Downloaded|Prepared|Installed|"
+                         r"Collecting|Installing collected packages)"
+                         r"[ :]+(\S+)?(?:\s+\(([\d.]+\s*[KMG]i?B)\))?", re.I)
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            tail.append(line)
+            tail = tail[-20:]
+            m = pat.search(line)
+            if m:
+                what, pkg, size = m.group(1), m.group(2) or "", m.group(3)
+                msg = f"{what} {pkg}".strip() + (f" ({size})" if size else "")
+                set_progress("gpu", msg, step, steps)
+        proc.wait()
+        if check and proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, args,
+                                                output="\n".join(tail))
 
+    TORCH_CUDA = ["torch", "--index-url",
+                  "https://download.pytorch.org/whl/cu124"]
+    STEPS = 4
     try:
-        set_progress("gpu", "Downloading GPU libraries (~2.5 GB) \u2014 "
-                            "keep the helper window open")
         if uv:
-            run([uv, "pip", "install", "--python", sys.executable,
-                 "nvidia-cublas-cu12", "nvidia-cudnn-cu12"])
-            set_progress("gpu", "Swapping in the GPU audio engine")
-            run([uv, "pip", "uninstall", "--python", sys.executable,
-                 "onnxruntime"], check=False)
-            run([uv, "pip", "install", "--python", sys.executable,
-                 "onnxruntime-gpu"])
+            stream([uv, "pip", "install", "--python", sys.executable,
+                    "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
+                   1, STEPS, "Downloading GPU libraries")
+            # CUDA build of torch: audio-separator only enables the GPU when
+            # torch.cuda.is_available() -- the plain (CPU) torch wheel from
+            # requirements.txt must be replaced, not just supplemented.
+            stream([uv, "pip", "install", "--python", sys.executable,
+                    "--reinstall-package", "torch"] + TORCH_CUDA,
+                   2, STEPS, "Installing the GPU compute engine (the big one)")
+            stream([uv, "pip", "uninstall", "--python", sys.executable,
+                    "onnxruntime"],
+                   3, STEPS, "Removing the CPU audio engine", check=False)
+            stream([uv, "pip", "install", "--python", sys.executable,
+                    "onnxruntime-gpu"],
+                   4, STEPS, "Installing the GPU audio engine")
         else:
-            run([sys.executable, "-m", "pip", "install",
-                 "nvidia-cublas-cu12", "nvidia-cudnn-cu12"])
-            set_progress("gpu", "Swapping in the GPU audio engine")
-            run([sys.executable, "-m", "pip", "uninstall", "-y",
-                 "onnxruntime"], check=False)
-            run([sys.executable, "-m", "pip", "install", "onnxruntime-gpu"])
+            stream([sys.executable, "-m", "pip", "install",
+                    "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
+                   1, STEPS, "Downloading GPU libraries")
+            stream([sys.executable, "-m", "pip", "install",
+                    "--force-reinstall"] + TORCH_CUDA,
+                   2, STEPS, "Installing the GPU compute engine (the big one)")
+            stream([sys.executable, "-m", "pip", "uninstall", "-y",
+                    "onnxruntime"],
+                   3, STEPS, "Removing the CPU audio engine", check=False)
+            stream([sys.executable, "-m", "pip", "install", "onnxruntime-gpu"],
+                   4, STEPS, "Installing the GPU audio engine")
         _GPU.update(restart_needed=True, error=None)
         print("  GPU acceleration installed -- restart the helper to use it.")
     except subprocess.CalledProcessError as e:
-        _GPU["error"] = ((e.stderr or e.stdout or str(e)) or "")[-500:]
+        _GPU["error"] = ((e.output or str(e)) or "")[-500:]
         print("  GPU install failed (CPU mode still works fine).")
     except Exception as e:
         _GPU["error"] = str(e)
