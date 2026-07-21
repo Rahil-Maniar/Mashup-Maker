@@ -142,6 +142,7 @@ def op_download(url, title):
 
 
 def op_prepare(path_a, path_b, name_a, name_b):
+    _ensure_gpu_stack_ok("prepare")  # refuse cleanly if torch stack is broken
     from llm_dj import analyze_song, compute_shifts, bar_grid, \
         transcribe_lyrics, lyrics_to_bar_lines, build_prompt
     from mashup_maker import separate_full_song
@@ -238,6 +239,84 @@ def op_auto_mashup(session):
 # GPU acceleration (detect always; install only on explicit user opt-in)
 # ---------------------------------------------------------------------------
 _GPU = {"installing": False, "restart_needed": False, "error": None}
+
+
+def _suppress_windows_error_dialogs():
+    """Windows: stop the OS from showing modal 'Entry Point Not Found' /
+    critical-error dialog boxes when a DLL fails to load. With this set, a
+    bad DLL surfaces as a normal ImportError/OSError that our try/except
+    handling turns into a readable JSON error -- instead of a popup that
+    freezes a background process until someone clicks OK. Child processes
+    inherit this error mode by default, so subprocesses are covered too."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        SEM = 0x0001 | 0x0002 | 0x8000  # FAILCRITICALERRORS|NOGPFAULT|NOOPENFILE
+        ctypes.windll.kernel32.SetErrorMode(SEM)
+    except Exception:
+        pass
+
+
+def _torch_stack_consistent():
+    """True if torch/torchvision look ABI-compatible, judged purely from
+    installed-package METADATA. No module is imported and no DLL is loaded,
+    so this can never crash, hang, or trigger a Windows error dialog.
+
+    Two independent signals:
+      1. Build-tag agreement: torch '2.6.0+cu124' next to torchvision
+         '0.21.0+cpu' is exactly the broken combo -- the version numbers
+         "match" but the compiled extensions do not.
+      2. torchvision's wheel metadata pins the torch it was compiled
+         against (e.g. 'torch==2.6.0'); the installed torch must satisfy it.
+    """
+    try:
+        from importlib.metadata import version, requires, PackageNotFoundError
+    except ImportError:
+        return True  # ancient Python; don't block on it
+    try:
+        t, tv = version("torch"), version("torchvision")
+    except PackageNotFoundError:
+        return True  # one of them absent -> nothing to mismatch
+    except Exception:
+        return True
+
+    def tag(v):  # '2.6.0+cu124' -> 'cu124', '2.6.0' -> ''
+        return v.split("+", 1)[1] if "+" in v else ""
+
+    if tag(t) != tag(tv):
+        return False
+
+    import re
+    try:
+        reqs = requires("torchvision") or []
+    except Exception:
+        reqs = []
+    for req in reqs:
+        m = re.match(r"torch\s*\(?\s*==\s*([\d.]+)", req)
+        if m and not (t == m.group(1) or t.startswith(m.group(1) + "+")):
+            return False
+    return True
+
+
+def _ensure_gpu_stack_ok(context=""):
+    """Gate for heavy jobs: raise a friendly, actionable error instead of
+    letting a broken torch/torchvision combo crash deep inside separation.
+    Also kicks off the automatic repair if it isn't already running."""
+    if _GPU["installing"]:
+        raise RuntimeError(
+            "GPU acceleration is still being installed/repaired -- "
+            "please retry in a few minutes (watch the progress bar).")
+    if _gpu_accelerated() and not _torch_stack_consistent():
+        if not _GPU["installing"]:
+            print("  Detected mismatched GPU packages -- starting auto-repair...")
+            _GPU.update(installing=True, error=None)
+            threading.Thread(target=_gpu_install_worker, daemon=True).start()
+        raise RuntimeError(
+            "GPU packages were out of sync (torch/torchvision mismatch). "
+            "An automatic repair just started -- it is a one-time large "
+            "download. Retry when it finishes, then restart the helper."
+            + (f" [{context}]" if context else ""))
 
 
 def _gpu_present():
@@ -560,16 +639,34 @@ def _gpu_selfheal():
     take the server down) and, if broken, re-run the installer worker."""
     if not _gpu_accelerated() or _GPU["installing"]:
         return
-    import subprocess
-    import sys
-    try:
-        r = subprocess.run(
-            [sys.executable, "-c", "import torchvision"],
-            capture_output=True, timeout=120)
-        if r.returncode == 0:
-            return
-    except Exception:
-        return  # can't verify; don't risk a pointless 2.5 GB reinstall
+    # -- Layer 1: metadata check. Instant, imports nothing, loads no DLLs,
+    #    so it cannot pop a Windows error dialog. Catches every known case
+    #    (CUDA torch + leftover CPU torchvision) before any user action.
+    if not _torch_stack_consistent():
+        broken = True
+    else:
+        # -- Layer 2: functional probe in a throwaway subprocess. The child
+        #    sets SetErrorMode FIRST so a bad DLL load fails programmatically
+        #    (ImportError -> nonzero exit) instead of showing a modal
+        #    'Entry Point Not Found' dialog that would block until clicked.
+        #    We call nms() for real because 'import torchvision' can succeed
+        #    even when its C extension failed to register.
+        import subprocess
+        import sys
+        PROBE = ("import ctypes,os;"
+                 "os.name=='nt' and ctypes.windll.kernel32.SetErrorMode(0x8003);"
+                 "import torch;from torchvision.ops import nms;"
+                 "nms(torch.zeros((1,4)),torch.zeros(1),0.5)")
+        try:
+            r = subprocess.run([sys.executable, "-c", PROBE],
+                               capture_output=True, timeout=180)
+            broken = r.returncode != 0
+        except subprocess.TimeoutExpired:
+            broken = True  # a healthy probe never takes 3 minutes
+        except Exception:
+            return  # can't verify; don't risk a pointless 2.5 GB reinstall
+    if not broken:
+        return
     print("  Detected a broken GPU install (torch/torchvision mismatch).")
     print("  Repairing automatically -- this is a one-time big download...")
     _GPU.update(installing=True, error=None)
@@ -578,6 +675,7 @@ def _gpu_selfheal():
 
 def main():
     global TOKEN
+    _suppress_windows_error_dialogs()  # must run before any DLL can load
     os.makedirs(WORK_DIR, exist_ok=True)
     TOKEN = get_token()
     _enable_cuda_dlls()
