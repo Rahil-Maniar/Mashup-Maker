@@ -314,11 +314,11 @@ def _gpu_install_worker():
             stream([uv, "pip", "install", "--python", sys.executable,
                     "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
                    1, STEPS, "Downloading CUDA runtime libraries")
-            # --reinstall-package forces replacement of CPU torch wheels
+            # --reinstall forces replacement of ALL packages in this command,
+            # including torchvision whose version number hasn't changed but
+            # whose compiled .pyd must match the new torch ABI.
             stream([uv, "pip", "install", "--python", sys.executable,
-                    "--reinstall-package", "torch",
-                    "--reinstall-package", "torchvision",
-                    "--reinstall-package", "torchaudio"] + TORCH_PKGS,
+                    "--reinstall"] + TORCH_PKGS,
                    2, STEPS, "Installing GPU compute engine (~2.5 GB, the big one)")
             stream([uv, "pip", "uninstall", "--python", sys.executable,
                     "onnxruntime"],
@@ -548,11 +548,40 @@ def _enable_cuda_dlls():
         pass
 
 
+def _gpu_selfheal():
+    """Detect and repair a broken GPU install (mismatched torchvision).
+
+    Older installer versions swapped in CUDA torch but left the CPU-built
+    torchvision behind, whose compiled _C.pyd doesn't match the new torch
+    ABI -> 'operator torchvision::nms does not exist' / DLL entry-point
+    errors at separation time. The venv survives app updates, so shipping
+    new code alone can't fix affected machines. Here we verify torchvision
+    actually imports in a throwaway subprocess (so a hard DLL crash can't
+    take the server down) and, if broken, re-run the installer worker."""
+    if not _gpu_accelerated() or _GPU["installing"]:
+        return
+    import subprocess
+    import sys
+    try:
+        r = subprocess.run(
+            [sys.executable, "-c", "import torchvision"],
+            capture_output=True, timeout=120)
+        if r.returncode == 0:
+            return
+    except Exception:
+        return  # can't verify; don't risk a pointless 2.5 GB reinstall
+    print("  Detected a broken GPU install (torch/torchvision mismatch).")
+    print("  Repairing automatically -- this is a one-time big download...")
+    _GPU.update(installing=True, error=None)
+    threading.Thread(target=_gpu_install_worker, daemon=True).start()
+
+
 def main():
     global TOKEN
     os.makedirs(WORK_DIR, exist_ok=True)
     TOKEN = get_token()
     _enable_cuda_dlls()
+    threading.Thread(target=_gpu_selfheal, daemon=True).start()
     try:  # bundle ffmpeg/ffprobe for yt-dlp + whisper (downloads once, ~80 MB)
         import static_ffmpeg
         static_ffmpeg.add_paths()
