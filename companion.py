@@ -206,6 +206,7 @@ def op_validate(session, plan_text):
 
 
 def op_render(session, plan):
+    _ensure_gpu_stack_ok("render")  # refuse if torch stack is broken
     from dsl_renderer import render_plan
     from critic import critique_render
     set_progress("render", "Stretching and mixing stems", 1, 2)
@@ -218,6 +219,7 @@ def op_render(session, plan):
 
 def op_auto_mashup(session):
     """One-click path: build a default arrangement (no LLM) and render it."""
+    _ensure_gpu_stack_ok("auto_mashup")  # refuse if torch stack is broken
     from studio_logic import auto_plan
     from dsl_renderer import validate_plan, render_plan
     from critic import critique_render
@@ -326,22 +328,33 @@ def _torch_stack_consistent():
 
 
 def _ensure_gpu_stack_ok(context=""):
-    """Gate for heavy jobs: raise a friendly, actionable error instead of
-    letting a broken torch/torchvision combo crash deep inside separation.
-    Also kicks off the automatic repair if it isn't already running."""
+    """Gate called at the top of every heavy job (prepare, render, auto-mashup).
+
+    Prevents a broken GPU stack from crashing deep inside separation by
+    refusing to start the job and returning a clear, actionable message.
+
+    Two cases handled:
+    A) Self-heal already running (flag set before thread spawned, so no
+       race window): tell the user to wait and watch the progress bar.
+    B) Stack is inconsistent but repair not yet started (e.g. user hit
+       prepare faster than _gpu_selfheal's subprocess probe finished):
+       set flag + start repair NOW, then refuse the job with instructions.
+    """
+    # Case A: repair already in flight (flag guaranteed set before thread).
     if _GPU["installing"]:
         raise RuntimeError(
-            "GPU acceleration is still being installed/repaired -- "
-            "please retry in a few minutes (watch the progress bar).")
+            "GPU packages are being repaired right now -- "
+            "watch the progress bar at the top of the page and retry "
+            "when it finishes, then restart the helper window.")
+    # Case B: metadata check catches it before any DLL is loaded.
     if _gpu_accelerated() and not _torch_stack_consistent():
-        if not _GPU["installing"]:
-            print("  Detected mismatched GPU packages -- starting auto-repair...")
-            _GPU.update(installing=True, error=None)
-            threading.Thread(target=_gpu_install_worker, daemon=True).start()
+        print("  Detected mismatched GPU packages at job gate -- starting repair...")
+        _GPU.update(installing=True, error=None)  # flag before thread
+        threading.Thread(target=_gpu_install_worker, daemon=True).start()
         raise RuntimeError(
-            "GPU packages were out of sync (torch/torchvision mismatch). "
-            "An automatic repair just started -- it is a one-time large "
-            "download. Retry when it finishes, then restart the helper."
+            "GPU packages were out of sync -- an automatic repair just started. "
+            "It is a one-time download (watch the progress bar). "
+            "When it finishes, restart the helper and try again."
             + (f" [{context}]" if context else ""))
 
 
@@ -737,9 +750,11 @@ def _gpu_selfheal():
             return  # can't verify; don't risk a pointless 2.5 GB reinstall
     if not broken:
         return
-    print("  Detected a broken GPU install (torch/torchvision mismatch).")
-    print("  Repairing automatically -- this is a one-time big download...")
-    _GPU.update(installing=True, error=None)
+    print("  Detected a broken GPU install (mismatched packages).")
+    print("  Repairing automatically -- this is a one-time download...")
+    print("  Separation jobs will be blocked until the repair finishes.")
+    _GPU.update(installing=True, error=None)  # set flag BEFORE thread starts
+                                               # so op_prepare gate sees it instantly
     threading.Thread(target=_gpu_install_worker, daemon=True).start()
 
 
