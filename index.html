@@ -3,73 +3,198 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mashup Studio</title>
+<title>Mashup Studio — two songs, one banger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0f1117; --card:#1a1d29; --line:#2a2f40; --fg:#e6e9f0;
-          --mut:#8b93a7; --acc:#7c5cff; --ok:#2ecc71; --warn:#f1c40f; --bad:#ff5c5c; }
+  :root {
+    --bg:#14101f; --panel:#1d1730; --panel2:#171129; --line:#322852;
+    --ink:#f2eefc; --dim:#a89cc8;
+    --hot:#ff4d8d; --glow:#ffb84d;
+    --ok:#3ddc97; --warn:#ffd166; --bad:#ff6b6b;
+    --grad:linear-gradient(100deg, var(--hot), var(--glow));
+  }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-         font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  header { padding:20px 24px; border-bottom:1px solid var(--line); display:flex;
-           align-items:center; gap:12px; }
-  header h1 { font-size:18px; margin:0; font-weight:700; }
-  #status { margin-left:auto; font-size:13px; color:var(--mut); display:flex;
-            align-items:center; gap:6px; }
-  .dot { width:9px; height:9px; border-radius:50%; background:var(--bad); }
-  .dot.on { background:var(--ok); }
-  main { max-width:960px; margin:0 auto; padding:24px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
-          padding:18px; margin-bottom:18px; }
-  h2 { font-size:15px; margin:0 0 12px; color:var(--mut); text-transform:uppercase;
-       letter-spacing:.06em; }
+  body {
+    margin:0; color:var(--ink);
+    font:15px/1.6 "Sora", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(900px 500px at -10% -10%, rgba(255,77,141,.14), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(255,184,77,.10), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    min-height:100vh;
+  }
+
+  /* ---------- header with live equalizer ---------- */
+  header { padding:18px 24px; border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:14px;
+           background:rgba(20,16,31,.7); backdrop-filter:blur(8px);
+           position:sticky; top:0; z-index:5; }
+  .eq { display:flex; align-items:flex-end; gap:3px; height:26px; }
+  .eq i { width:5px; border-radius:3px 3px 0 0; background:var(--grad);
+          animation:eq 1s ease-in-out infinite; }
+  .eq i:nth-child(1){height:40%;animation-delay:0s}
+  .eq i:nth-child(2){height:90%;animation-delay:.15s}
+  .eq i:nth-child(3){height:60%;animation-delay:.3s}
+  .eq i:nth-child(4){height:100%;animation-delay:.45s}
+  .eq i:nth-child(5){height:50%;animation-delay:.6s}
+  @keyframes eq { 0%,100%{transform:scaleY(.45)} 50%{transform:scaleY(1)} }
+  header h1 { margin:0; font:700 19px "Unbounded", sans-serif; letter-spacing:.01em; }
+  header h1 span { background:var(--grad); -webkit-background-clip:text;
+                   background-clip:text; color:transparent; }
+  .tagline { color:var(--dim); font-size:12.5px; margin-left:2px; }
+  #status { margin-left:auto; font-size:13px; color:var(--dim);
+            display:flex; align-items:center; gap:7px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--bad);
+         box-shadow:0 0 8px var(--bad); flex:none; }
+  .dot.on { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+
+  main { max-width:980px; margin:0 auto; padding:28px 24px 40px; }
+
+  /* ---------- cards & step badges ---------- */
+  .card { background:var(--panel); border:1px solid var(--line);
+          border-radius:16px; padding:20px 22px; margin-bottom:22px;
+          box-shadow:0 8px 30px rgba(0,0,0,.25); }
+  .stephead { display:flex; align-items:center; gap:12px; margin:0 0 14px; }
+  .stepnum { width:34px; height:34px; flex:none; border-radius:50%;
+             background:radial-gradient(circle at center, var(--panel2) 26%, #0c0916 27% 60%, var(--panel2) 61%);
+             border:2px solid transparent;
+             background-clip:padding-box; position:relative;
+             display:grid; place-items:center;
+             font:700 14px "Unbounded", sans-serif; color:var(--glow); }
+  .stepnum::before { content:""; position:absolute; inset:-2px; border-radius:50%;
+             background:var(--grad); z-index:-1; }
+  .steptitle { margin:0; font:700 16px "Unbounded", sans-serif; letter-spacing:.01em; }
+  .stepsub { color:var(--dim); font-size:13px; margin:-8px 0 14px 46px; }
+
   input, textarea, select, button { font:inherit; }
   input[type=text], textarea, select {
-    width:100%; background:#12141d; border:1px solid var(--line); color:var(--fg);
-    border-radius:8px; padding:10px 12px; }
-  textarea { min-height:120px; resize:vertical; font-family:ui-monospace,monospace; font-size:13px; }
-  button { background:var(--acc); color:#fff; border:0; border-radius:8px;
-           padding:10px 16px; font-weight:600; cursor:pointer; }
-  button.ghost { background:#262a3a; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
+    width:100%; background:var(--panel2); border:1px solid var(--line);
+    color:var(--ink); border-radius:10px; padding:10px 12px; }
+  input[type=text]:focus, textarea:focus, select:focus, button:focus-visible {
+    outline:2px solid var(--hot); outline-offset:2px; }
+  textarea { min-height:130px; resize:vertical;
+             font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; }
+  button { background:var(--grad); color:#1a0b12; border:0; border-radius:10px;
+           padding:10px 18px; font-weight:700; cursor:pointer;
+           box-shadow:0 4px 18px rgba(255,77,141,.35);
+           transition:transform .12s ease, box-shadow .12s ease; }
+  button:hover:not(:disabled) { transform:translateY(-1px);
+           box-shadow:0 6px 22px rgba(255,77,141,.5); }
+  button.ghost { background:transparent; color:var(--ink);
+                 border:1px solid var(--line); box-shadow:none; }
+  button.ghost:hover:not(:disabled) { border-color:var(--hot); box-shadow:none; }
+  button:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  @media(max-width:680px){ .cols{ grid-template-columns:1fr; } }
-  .slot { background:#12141d; border:1px dashed var(--line); border-radius:10px; padding:14px; }
-  .slot.filled { border-style:solid; border-color:var(--acc); }
-  .muted { color:var(--mut); font-size:13px; }
-  .res { padding:8px 10px; border-radius:8px; cursor:pointer; }
-  .res:hover { background:#20243400; background:#1e2233; }
+  .muted { color:var(--dim); font-size:13px; }
+  .res { padding:9px 11px; border-radius:10px; cursor:pointer;
+         border:1px solid transparent; }
+  .res:hover { background:var(--panel2); border-color:var(--line); }
   .hidden { display:none; }
-  pre { white-space:pre-wrap; word-break:break-word; background:#12141d;
-        border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12.5px; }
-  .metric { font-size:34px; font-weight:800; }
-  .chk { display:flex; gap:8px; align-items:baseline; margin:4px 0; }
+  pre { white-space:pre-wrap; word-break:break-word; background:var(--panel2);
+        border:1px solid var(--line); border-radius:10px; padding:12px;
+        font-size:12.5px; }
   .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
   audio { width:100%; margin-top:8px; }
-  .pill { display:inline-block; background:#262a3a; border-radius:20px; padding:2px 10px;
-          font-size:12px; color:var(--mut); }
-  a { color:var(--acc); }
-  .setup code { background:#12141d; padding:2px 6px; border-radius:5px; }
+  .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line);
+          border-radius:20px; padding:2px 10px; font-size:11.5px; color:var(--dim); }
+  a { color:var(--glow); }
+  .setup code { background:var(--panel2); padding:2px 6px; border-radius:6px; }
+  details summary { cursor:pointer; }
 
-.gpu-bar { height: 6px; border-radius: 3px; overflow: hidden;
-  background: rgba(255,255,255,.12); margin: 8px 0 6px; }
-.gpu-bar-fill { height: 100%; width: 40%; border-radius: 3px;
-  background: linear-gradient(90deg, #7c5cff, #38bdf8);
-  animation: gpuSlide 1.4s ease-in-out infinite; }
-@keyframes gpuSlide {
-  0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+  /* ---------- turntable decks (signature) ---------- */
+  .decks { display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:start; }
+  .fader { align-self:center; width:44px; height:44px; border-radius:50%;
+           display:grid; place-items:center; background:var(--panel2);
+           border:1px solid var(--line);
+           font:700 15px "Unbounded", sans-serif; color:var(--hot); }
+  @media(max-width:700px){ .decks{ grid-template-columns:1fr; }
+    .fader{ justify-self:center; } }
+  .slot { background:var(--panel2); border:1px dashed var(--line);
+          border-radius:14px; padding:14px; display:flex; gap:14px;
+          align-items:center; min-height:96px;
+          transition:border-color .25s ease, box-shadow .25s ease; }
+  .slot.filled { border-style:solid; border-color:var(--hot);
+                 box-shadow:0 0 22px rgba(255,77,141,.22); }
+  .vinyl { width:64px; height:64px; flex:none; border-radius:50%; position:relative;
+    background:
+      radial-gradient(circle, var(--glow) 0 17%, #14101f 18% 21%,
+        #221a38 22% 25%, #14101f 26% 29%, #221a38 30% 33%, #14101f 34% 37%,
+        #221a38 38% 41%, #14101f 42% 100%);
+    box-shadow:inset 0 0 0 1px var(--line); }
+  .vinyl::after { content:""; position:absolute; top:calc(50% - 3px);
+    left:calc(50% - 3px); width:6px; height:6px; border-radius:50%;
+    background:#0c0916; }
+  .slot.filled .vinyl { animation:spin 2.4s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .slotmeta { min-width:0; }
+  .slotmeta b { font-family:"Unbounded", sans-serif; font-size:13.5px; }
+  .slotmeta .muted { overflow-wrap:anywhere; }
+
+  /* ---------- the fork: auto vs. AI chat ---------- */
+  .fork { display:grid; grid-template-columns:1fr auto 1fr; gap:18px; align-items:stretch; }
+  @media(max-width:820px){ .fork{ grid-template-columns:1fr; } }
+  .option { background:var(--panel2); border:1px solid var(--line);
+            border-radius:14px; padding:16px 18px; }
+  .option h3 { margin:0 0 6px; font:700 14.5px "Unbounded", sans-serif; }
+  .ordivide { display:flex; flex-direction:column; align-items:center; gap:8px;
+              color:var(--dim); font-size:12px; justify-content:center; }
+  .ordivide::before, .ordivide::after { content:""; width:1px; flex:1;
+              background:var(--line); }
+  .orword { border:1px solid var(--line); border-radius:20px; padding:3px 12px;
+            font:700 12px "Unbounded", sans-serif; color:var(--glow); }
+  @media(max-width:820px){
+    .ordivide { flex-direction:row; }
+    .ordivide::before, .ordivide::after { height:1px; width:auto; flex:1; }
+  }
+  .ministeps { margin:10px 0 0; padding-left:0; list-style:none;
+               counter-reset:mini; }
+  .ministeps li { counter-increment:mini; margin:12px 0; padding-left:30px;
+                  position:relative; }
+  .ministeps li::before { content:counter(mini, lower-alpha);
+    position:absolute; left:0; top:1px; width:20px; height:20px;
+    border-radius:50%; background:var(--panel); border:1px solid var(--line);
+    color:var(--glow); font:700 11px "Unbounded", sans-serif;
+    display:grid; place-items:center; }
+
+  .metric { font:700 40px "Unbounded", sans-serif;
+            background:var(--grad); -webkit-background-clip:text;
+            background-clip:text; color:transparent; }
+  .chk { display:flex; gap:8px; align-items:baseline; margin:5px 0; }
+
+  .gpu-bar { height:6px; border-radius:3px; overflow:hidden;
+    background:rgba(255,255,255,.12); margin:8px 0 6px; }
+  .gpu-bar-fill { height:100%; width:40%; border-radius:3px;
+    background:var(--grad);
+    animation:gpuSlide 1.4s ease-in-out infinite; }
+  @keyframes gpuSlide { 0%{margin-left:-40%} 100%{margin-left:100%} }
+
+  footer { text-align:center; color:var(--dim); font-size:13px;
+           padding:8px 0 30px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .eq i, .slot.filled .vinyl, .gpu-bar-fill { animation:none; }
+    button, .slot { transition:none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>🎛️ Mashup Studio</h1>
-  <div id="status"><span class="dot" id="dot"></span><span id="statusText">Companion: checking…</span></div>
+  <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div>
+    <h1>Mashup <span>Studio</span></h1>
+    <div class="tagline">Two songs. One banger. Made on your computer.</div>
+  </div>
+  <div id="status"><span class="dot" id="dot"></span><span id="statusText">Helper: checking…</span></div>
 </header>
 <main>
 
   <!-- SETUP (shown until companion is paired) -->
   <div class="card setup" id="setupCard">
-    <h2>One-time setup</h2>
+    <div class="stephead"><h2 class="steptitle" style="margin:0">One-time setup</h2></div>
     <p class="muted">Mashups are made <b>on your own computer</b> by a small helper app —
     nothing is uploaded, and it uses your machine's speed.</p>
     <ol class="muted">
@@ -95,7 +220,7 @@
 
   <!-- CONSENT (shown once paired, until terms are accepted) -->
   <div class="card hidden" id="consentCard">
-    <h2>Before we start</h2>
+    <div class="stephead"><h2 class="steptitle" style="margin:0">Before we start</h2></div>
     <pre id="termsBox" style="margin-bottom:12px"></pre>
     <label class="row muted" style="cursor:pointer">
       <input type="checkbox" id="consentChk" style="width:auto">
@@ -112,93 +237,137 @@
 
     <div class="card hidden" id="gpuBanner" style="padding:12px 16px"></div>
 
+    <!-- STEP 1 -->
     <div class="card">
-      <h2>1 · Pick two songs</h2>
+      <div class="stephead"><span class="stepnum">1</span>
+        <h2 class="steptitle">Pick your two songs</h2></div>
+      <p class="stepsub">Search anything on YouTube, or let us suggest pairs that mix well together.</p>
       <div class="row" style="margin-bottom:8px">
-        <button class="ghost" id="recsBtn" onclick="loadRecs()">🎲 Suggest good pairs</button>
+        <button class="ghost" id="recsBtn" onclick="loadRecs()">🎲 Surprise me — suggest pairs that mix well</button>
         <span class="muted" id="recsMsg"></span>
       </div>
       <div id="recsBox" style="margin-bottom:14px"></div>
-      <div class="cols">
+
+      <div class="decks">
         <div>
-          <div class="slot" id="slotA"><b>Song A</b> <span class="pill">vocal lead</span>
-            <div class="muted" id="nameA">— empty —</div></div>
+          <div class="slot" id="slotA">
+            <div class="vinyl" aria-hidden="true"></div>
+            <div class="slotmeta"><b>Deck A</b> <span class="pill">sings the lead</span>
+              <div class="muted" id="nameA">Drop a song here — its vocals lead the mashup</div></div>
+          </div>
           <div class="row" style="margin-top:10px">
-            <input type="text" id="qA" placeholder="Search song A…" style="flex:1">
+            <input type="text" id="qA" placeholder="Search a song for Deck A…" style="flex:1">
             <button class="ghost" onclick="doSearch('A')">Search</button>
           </div>
           <div id="resA"></div>
         </div>
+
+        <div class="fader" aria-hidden="true">×</div>
+
         <div>
-          <div class="slot" id="slotB"><b>Song B</b> <span class="pill">tonal anchor</span>
-            <div class="muted" id="nameB">— empty —</div></div>
+          <div class="slot" id="slotB">
+            <div class="vinyl" aria-hidden="true"></div>
+            <div class="slotmeta"><b>Deck B</b> <span class="pill">sets the key &amp; beat</span>
+              <div class="muted" id="nameB">Drop a song here — it anchors the sound</div></div>
+          </div>
           <div class="row" style="margin-top:10px">
-            <input type="text" id="qB" placeholder="Search song B…" style="flex:1">
+            <input type="text" id="qB" placeholder="Search a song for Deck B…" style="flex:1">
             <button class="ghost" onclick="doSearch('B')">Search</button>
           </div>
           <div id="resB"></div>
         </div>
       </div>
-      <div style="margin-top:16px">
-        <button id="prepBtn" onclick="doPrepare()" disabled>⚗️ Prepare pair</button>
-        <span class="muted" id="prepMsg"></span>
+
+      <div style="margin-top:18px">
+        <button id="prepBtn" onclick="doPrepare()" disabled>🎧 Get my songs ready</button>
+        <span class="muted" id="prepMsg">Listens to both songs — beat, key and lyrics. Takes a few minutes.</span>
       </div>
     </div>
 
+    <!-- STEP 2 -->
     <div class="card hidden" id="blendCard">
-      <h2>2 · Blend verdict</h2>
+      <div class="stephead"><span class="stepnum">2</span>
+        <h2 class="steptitle">How well do they mix?</h2></div>
       <div class="metric" id="blendScore">—</div>
       <div id="blendVerdict" class="muted"></div>
       <div id="blendChecks" style="margin-top:10px"></div>
-      <div class="row" style="margin-top:14px">
-        <button id="autoBtn" onclick="autoMashup()">✨ Make it for me</button>
-        <span class="muted" id="autoMsg">one click, no AI chat needed — or fine-tune with the DJ below</span>
-      </div>
     </div>
 
+    <!-- STEP 3: the fork -->
     <div class="card hidden" id="djCard">
-      <h2>3 · The DJ</h2>
-      <div class="row">
-        <input type="text" id="briefText" placeholder='Creative brief e.g. "melancholic late-night drive"' style="flex:2">
-        <select id="arcSel">
-          <option value="">Energy arc: (none)</option>
-          <option value="slow_burn">slow burn</option>
-          <option value="instant_banger">instant banger</option>
-          <option value="rollercoaster">rollercoaster</option>
-          <option value="waves">waves</option>
-        </select>
-        <button class="ghost" onclick="applyBrief()">Apply brief</button>
-      </div>
-      <p class="muted">Copy this prompt into your LLM (claude.ai, ChatGPT…), then paste its full reply below.</p>
-      <div class="row"><button class="ghost" onclick="copyPrompt()">📋 Copy prompt</button>
-        <span class="muted" id="copyMsg"></span></div>
-      <details style="margin-top:10px"><summary class="muted">show prompt</summary>
-        <pre id="promptBox"></pre></details>
+      <div class="stephead"><span class="stepnum">3</span>
+        <h2 class="steptitle">Choose how to make it</h2></div>
 
-      <textarea id="planText" placeholder="Paste the LLM's reply here (reasoning + JSON is fine)…"></textarea>
-      <div class="row" style="margin-top:10px">
-        <button onclick="doValidate()">Validate</button>
-        <button class="ghost" onclick="doRender()" id="renderBtn" disabled>🎛️ Render mashup</button>
-        <span class="muted" id="djMsg"></span>
+      <div class="fork">
+        <!-- Option 1: one click -->
+        <div class="option">
+          <h3>✨ Make it for me</h3>
+          <p class="muted">One click. The studio designs the whole arrangement,
+            mixes it, and checks its own work. No AI chat needed.</p>
+          <div class="row" style="margin-top:12px">
+            <button id="autoBtn" onclick="autoMashup()">✨ Make my mashup</button>
+          </div>
+          <p class="muted" id="autoMsg" style="margin-top:8px"></p>
+        </div>
+
+        <div class="ordivide"><span class="orword">or</span></div>
+
+        <!-- Option 2: direct it with an AI chat -->
+        <div class="option">
+          <h3>🎚️ Direct it yourself, with any AI chat</h3>
+          <p class="muted">More control: hand a briefing to claude.ai, ChatGPT or any AI,
+            then bring its answer back here.</p>
+          <ol class="ministeps">
+            <li><b>Set the vibe</b> <span class="muted">(optional)</span>
+              <div class="row" style="margin-top:8px">
+                <input type="text" id="briefText"
+                  placeholder='Describe a mood, e.g. "melancholic late-night drive"' style="flex:2; min-width:180px">
+                <select id="arcSel" style="flex:1; min-width:180px">
+                  <option value="">Energy journey: let the AI decide</option>
+                  <option value="slow_burn">Slow burn — starts mellow, builds to a big finish</option>
+                  <option value="instant_banger">Instant banger — full energy from the first second</option>
+                  <option value="rollercoaster">Rollercoaster — big ups and downs throughout</option>
+                  <option value="waves">Waves — energy gently rises and falls</option>
+                </select>
+                <button class="ghost" onclick="applyBrief()">Update the briefing</button>
+              </div></li>
+            <li><b>Copy the briefing</b> and paste it into your AI chat
+              <div class="row" style="margin-top:8px">
+                <button class="ghost" onclick="copyPrompt()">📋 Copy the briefing</button>
+                <span class="muted" id="copyMsg"></span>
+              </div>
+              <details style="margin-top:8px"><summary class="muted">Peek at the briefing</summary>
+                <pre id="promptBox"></pre></details></li>
+            <li><b>Paste the AI's full reply</b> below — the whole thing is fine, we'll find the plan
+              <textarea id="planText" style="margin-top:8px"
+                placeholder="Paste the AI's reply here (its explanation + the JSON plan)…"></textarea></li>
+            <li><b>Check it, then mix it</b>
+              <div class="row" style="margin-top:8px">
+                <button class="ghost" onclick="doValidate()">✓ Check the plan</button>
+                <button onclick="doRender()" id="renderBtn" disabled>🎛️ Mix my mashup</button>
+                <span class="muted" id="djMsg"></span>
+              </div>
+              <div id="validOut" style="margin-top:10px"></div></li>
+          </ol>
+        </div>
       </div>
-      <div id="validOut" style="margin-top:10px"></div>
     </div>
 
+    <!-- STEP 4 -->
     <div class="card hidden" id="outCard">
-      <h2>4 · Result</h2>
+      <div class="stephead"><span class="stepnum">4</span>
+        <h2 class="steptitle">Your mashup 🎉</h2></div>
       <audio id="player" controls></audio>
-      <div class="row" style="margin-top:8px">
-        <a id="dlLink" download="mashup.wav"><button class="ghost">⬇️ Download</button></a>
+      <div class="row" style="margin-top:10px">
+        <a id="dlLink" download="mashup.wav"><button class="ghost">⬇️ Save to my computer</button></a>
       </div>
-      <details style="margin-top:12px" id="criticWrap"><summary class="muted">🧾 Critic report</summary>
+      <details style="margin-top:12px" id="criticWrap"><summary class="muted">🧾 How it scored — the studio's own notes</summary>
         <pre id="criticBox"></pre></details>
     </div>
   </div>
 
-  <p class="muted" style="text-align:center;margin-top:24px">
-    Runs on your machine. For personal, non-commercial use.
-  </p>
 </main>
+<footer>Runs on your machine. For personal, non-commercial use.</footer>
 
 <script src="app.js"></script>
 </body>

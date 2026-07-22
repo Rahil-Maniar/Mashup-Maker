@@ -115,11 +115,11 @@ async function checkCompanion() {
   try {
     h = await call("/health", { auth: false });
   } catch {
-    setStatus(false, "Companion not running");
+    setStatus(false, "Helper not running — see setup below");
     show("setup");
     return;
   }
-  if (!h.ok) { setStatus(false, "Companion error"); show("setup"); return; }
+  if (!h.ok) { setStatus(false, "Helper error"); show("setup"); return; }
   if (h.terms) $("termsBox").textContent = h.terms;
 
   // verify our stored token still works (health's `authed` covers this too,
@@ -129,7 +129,7 @@ async function checkCompanion() {
     try { await call("/whoami"); authed = true; } catch { /* stale token */ }
   }
   if (!authed) {
-    setStatus(true, "Companion found — pair below");
+    setStatus(true, "Helper found — pair below");
     show("setup");
     return;
   }
@@ -138,7 +138,7 @@ async function checkCompanion() {
     show("consent");
     return;
   }
-  setStatus(true, "Companion paired");
+  setStatus(true, "Helper connected ✓");
   show("app");
   updateGpuBanner(h.gpu);
 }
@@ -161,7 +161,7 @@ $("pairBtn").onclick = async () => {
     const w = await call("/whoami");      // token test, no side effects
     localStorage.setItem("companion_token", TOKEN);
     $("pairMsg").textContent = "Paired ✓";
-    if (w.consented) { setStatus(true, "Companion paired"); show("app"); }
+    if (w.consented) { setStatus(true, "Helper connected ✓"); show("app"); }
     else { setStatus(true, "Paired — accept terms to continue"); show("consent"); }
   } catch (e) {
     $("pairMsg").innerHTML = `<span class="bad">Pairing failed: ${e.message}</span>`;
@@ -174,7 +174,7 @@ $("consentBtn").onclick = async () => {
   $("consentBtn").disabled = true;
   try {
     await call("/consent", { method: "POST", body: { accept: true } });
-    setStatus(true, "Companion paired");
+    setStatus(true, "Helper connected ✓");
     show("app");
   } catch (e) {
     $("consentMsg").innerHTML = `<span class="bad">${e.message}</span>`;
@@ -186,7 +186,7 @@ $("consentBtn").onclick = async () => {
 async function loadRecs() {
   const box = $("recsBox");
   $("recsBtn").disabled = true;
-  $("recsMsg").textContent = "Finding good pairs… (first time loads the song database, give it a moment)";
+  $("recsMsg").textContent = "Listening for pairs that mix well… (first time loads the song library, give it a moment)";
   try {
     const { pairs } = await call("/recommend?n=4");
     box.innerHTML = pairs.length ? "" :
@@ -194,11 +194,11 @@ async function loadRecs() {
     pairs.forEach((p) => {
       const d = document.createElement("div");
       d.className = "res";
-      d.innerHTML = `<b>${escapeHtml(p.name)}</b><br><span class="muted">${escapeHtml(p.description)} — click to load both songs</span>`;
+      d.innerHTML = `<b>${escapeHtml(p.name)}</b><br><span class="muted">${escapeHtml(p.description)} — click to load both songs onto the decks</span>`;
       d.onclick = () => usePair(p, d);
       box.appendChild(d);
     });
-    $("recsMsg").textContent = pairs.length ? "Click a pair, or roll again 🎲" : "";
+    $("recsMsg").textContent = pairs.length ? "Click a pair to load it, or roll again 🎲" : "";
   } catch (e) {
     box.innerHTML = "";
     $("recsMsg").innerHTML = `<span class="bad">${e.message}</span>`;
@@ -209,7 +209,7 @@ async function loadRecs() {
 
 async function usePair(p, el) {
   el.style.opacity = 0.5;
-  $("recsMsg").textContent = "Fetching both songs…";
+  $("recsMsg").textContent = "Loading both songs onto the decks…";
   $("prepBtn").disabled = true;
   try {
     for (const [slot, s] of [["A", p.song_a], ["B", p.song_b]]) {
@@ -223,7 +223,7 @@ async function usePair(p, el) {
       $("name" + slot).textContent = out.title;
       $("slot" + slot).classList.add("filled");
     }
-    $("recsMsg").textContent = "Pair loaded ✓ — hit Prepare pair";
+    $("recsMsg").textContent = "Both decks loaded ✓ — press “Get my songs ready”";
   } catch (e) {
     $("recsMsg").innerHTML = `<span class="bad">${e.message}</span>`;
   } finally {
@@ -268,7 +268,7 @@ async function download(slot, r) {
 // ---- prepare ----
 async function doPrepare() {
   $("prepBtn").disabled = true;
-  startProgress($("prepMsg"), "Starting up on your machine…");
+  startProgress($("prepMsg"), "Warming up on your machine…");
   try {
     const out = await call("/prepare", { method: "POST", body: {
       path_a: pair.A.path, path_b: pair.B.path, name_a: pair.A.title, name_b: pair.B.title } });
@@ -277,7 +277,7 @@ async function doPrepare() {
     $("promptBox").textContent = out.prompt;
     $("djCard").classList.remove("hidden");
     stopProgress();
-    $("prepMsg").textContent = "Ready ✓";
+    $("prepMsg").textContent = "Songs ready ✓ — scroll down to make your mashup";
   } catch (e) {
     stopProgress();
     $("prepMsg").innerHTML = `<span class="bad">${e.message}</span>`;
@@ -304,40 +304,40 @@ async function applyBrief() {
   try {
     const out = await call("/reprompt", { method: "POST", body: { session: SESSION, brief } });
     $("promptBox").textContent = out.prompt;
-    $("copyMsg").textContent = "Brief applied — prompt updated.";
+    $("copyMsg").textContent = "Vibe applied — the briefing is updated.";
   } catch (e) { $("copyMsg").innerHTML = `<span class="bad">${e.message}</span>`; }
 }
 
 function copyPrompt() {
   navigator.clipboard.writeText($("promptBox").textContent);
-  $("copyMsg").textContent = "Copied! Paste into your LLM.";
+  $("copyMsg").textContent = "Copied! Now paste it into your AI chat.";
 }
 
 // ---- validate ----
 async function doValidate() {
-  $("djMsg").textContent = "Validating…";
+  $("djMsg").textContent = "Checking the plan…";
   $("validOut").innerHTML = "";
   try {
     const out = await call("/validate", { method: "POST", body: {
       session: SESSION, plan_text: $("planText").value } });
     if (out.errors.length) {
-      $("validOut").innerHTML = `<div class="bad">Plan rejected — paste these back to your LLM:</div>` +
+      $("validOut").innerHTML = `<div class="bad">The plan has problems — paste these lines back to your AI so it can fix them:</div>` +
         `<pre>${out.errors.map(e => "- " + escapeHtml(e)).join("\n")}</pre>`;
       $("renderBtn").disabled = true;
       $("djMsg").textContent = "";
       return;
     }
     PLAN = out.plan;
-    let html = `<div class="ok">Plan valid ✓ ${escapeHtml(out.plan.comment || "")}</div>`;
+    let html = `<div class="ok">Plan looks good ✓ ${escapeHtml(out.plan.comment || "")}</div>`;
     if (out.warnings.length) html += `<pre>${out.warnings.map(w => "⚠ " + escapeHtml(w)).join("\n")}</pre>`;
     if (out.phrase_issues.length)
-      html += `<div class="warn">Clips lyric phrases (fixable, or render anyway):</div>` +
+      html += `<div class="warn">Some lyric lines get cut mid-phrase (ask your AI to fix, or mix anyway):</div>` +
               `<pre>${out.phrase_issues.map(p => "- " + escapeHtml(p)).join("\n")}</pre>`;
     $("validOut").innerHTML = html;
     $("renderBtn").disabled = false;
     $("djMsg").textContent = "";
   } catch (e) {
-    $("validOut").innerHTML = `<span class="bad">Couldn't read a plan: ${e.message}</span>`;
+    $("validOut").innerHTML = `<span class="bad">Couldn't find a plan in that reply: ${e.message}. Make sure you pasted the AI's full answer.</span>`;
     $("djMsg").textContent = "";
   }
 }
@@ -357,12 +357,12 @@ async function showResult(out) {
 
 async function doRender() {
   $("renderBtn").disabled = true;
-  startProgress($("djMsg"), "Rendering on your machine…");
+  startProgress($("djMsg"), "Mixing on your machine…");
   try {
     const out = await call("/render", { method: "POST", body: { session: SESSION, plan: PLAN } });
     await showResult(out);
     stopProgress();
-    $("djMsg").textContent = "Done ✓";
+    $("djMsg").textContent = "Mixed ✓ — your mashup is below";
   } catch (e) {
     stopProgress();
     $("djMsg").innerHTML = `<span class="bad">${e.message}</span>`;
@@ -375,12 +375,12 @@ async function doRender() {
 async function autoMashup() {
   if (!SESSION) return;
   $("autoBtn").disabled = true;
-  startProgress($("autoMsg"), "Designing an arrangement…");
+  startProgress($("autoMsg"), "Designing your mashup…");
   try {
     const out = await call("/auto_mashup", { method: "POST", body: { session: SESSION } });
     await showResult(out);
     stopProgress();
-    $("autoMsg").textContent = "Done ✓ — want more control? Use the AI DJ below.";
+    $("autoMsg").textContent = "Done ✓ — it's waiting below. Want more control next time? Try “Direct it yourself”.";
   } catch (e) {
     stopProgress();
     $("autoMsg").innerHTML = `<span class="bad">${e.message}</span>`;
