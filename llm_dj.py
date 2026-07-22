@@ -291,6 +291,13 @@ thing in your reply. Schema:
     filter_in/filter_out) or an FX-marked drop -- never a bare unadorned cut.
 11. Use "volume" automation to set mood: no long segment should sit at one static level.
     Anchor your moves to specific lyric lines (say which line in your comment).
+12. NEVER jump the same song to a non-consecutive part in back-to-back segments.
+    If segment N ends song A at bar X, segment N+1 (or N+2 if N+1 is the other song)
+    must either continue from bar X onward OR switch to the other song entirely.
+    Jumping song A from bar 20 straight to bar 60 in the next segment it appears
+    sounds like a broken edit -- the listener was tracking that song and you just
+    teleported it. If you need energy from a later section, SWITCH to song B first,
+    then come back to song A at the later position.
 
 BEFORE YOU OUTPUT, CHECK YOUR PLAN:
 [ ] Every vocal window contains complete lyric entries (no mid-phrase starts/ends).
@@ -301,6 +308,8 @@ BEFORE YOU OUTPUT, CHECK YOUR PLAN:
 [ ] Total length 40-80 bars; 4-8 segments; segments mostly 8+ bars (choppier = amateur).
 [ ] Vocals sit at gain 0; instrumentals at -2 to -4 under them.
 [ ] Each pillar line has a mix move (duck, drop, or swell) that spotlights it.
+[ ] No song jumps to a non-consecutive position between its own appearances
+    (rule 12). If in doubt, put the other song between the two appearances.
 
 REVISION MODE: if the user replies with feedback on a rendered plan (e.g. "the duck at
 segment 3 is too deep", "that cut lands early"), keep everything they didn't mention,

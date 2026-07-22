@@ -287,6 +287,32 @@ def _torch_stack_consistent():
     if tag(t) != tag(tv):
         return False
 
+    # Cross-check onnxruntime-gpu vs torch CUDA generation.
+    # Mirrors the same table used by _pick_cuda_config() in the installer:
+    #   CUDA 11  -> ort <= 1.16
+    #   CUDA 12  -> ort 1.17-1.20
+    #   CUDA 13+ -> ort 1.21+
+    # Catching this from metadata means the DLL (cublasLt64_13.dll etc.) is
+    # never loaded by a mismatched binary, so no Windows error dialog can appear.
+    import re as _re
+    cuda_tag = tag(t)
+    if cuda_tag and cuda_tag.startswith("cu"):
+        try:
+            cuda_num = int(_re.search(r"\d+", cuda_tag).group())  # cu124 -> 124
+            cuda_major = cuda_num // 10                            # 124 -> 12
+            ort_ver = version("onnxruntime-gpu")
+            ort_minor = int(ort_ver.split(".")[1])  # 1.20.1 -> 20
+            if cuda_major <= 11 and ort_minor > 16:
+                return False
+            if cuda_major == 12 and not (17 <= ort_minor <= 20):
+                return False
+            if cuda_major >= 13 and ort_minor < 21:
+                return False
+        except PackageNotFoundError:
+            pass
+        except Exception:
+            pass
+
     import re
     try:
         reqs = requires("torchvision") or []
@@ -355,12 +381,50 @@ def _gpu_install_worker():
     from shutil import which
     uv = which("uv")
 
-    # All three torch packages must come from the same cu124 index so their
-    # compiled extensions are compatible. cu124 needs driver >= 550; safe for
-    # GTX 16xx and newer. Change to cu121 for very old drivers if needed.
-    TORCH_INDEX = "https://download.pytorch.org/whl/cu124"
-    TORCH_PKGS  = ["torch", "torchvision", "torchaudio",
-                   "--index-url", TORCH_INDEX]
+    # ---------------------------------------------------------------------------
+    # Detect the best CUDA version this GPU can run, then select matching
+    # torch + onnxruntime-gpu versions automatically. This means the installer
+    # works correctly across GTX 16xx (cu121), RTX 20/30/40 (cu124), and
+    # future hardware (cu130+) without any hardcoded assumptions.
+    # ---------------------------------------------------------------------------
+    def _pick_cuda_config():
+        """Return (torch_index_url, ort_gpu_pin) for this machine's GPU.
+        Strategy: ask nvidia-smi for the driver's max CUDA version, then map
+        to the newest torch index that doesn't exceed it. Falls back to cu121
+        (the widest-compat cu12 build) if detection fails.
+        ort pin rules (from onnxruntime release notes):
+          ort >= 1.21  requires CUDA 13+
+          ort 1.17-1.20 is CUDA 12 compatible
+          ort <= 1.16  is CUDA 11 compatible
+        """
+        import subprocess as _sp, re as _re
+        cuda_major = 12  # safe fallback
+        try:
+            out = _sp.check_output(
+                ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                text=True, timeout=10).strip().splitlines()[0]
+            # driver version e.g. "556.12" -> CUDA support table:
+            # driver >= 576 -> CUDA 13, >= 525 -> CUDA 12, >= 450 -> CUDA 11
+            drv = float(_re.search(r"[\d.]+", out).group())
+            if drv >= 576:
+                cuda_major = 13
+            elif drv >= 525:
+                cuda_major = 12
+            else:
+                cuda_major = 11
+        except Exception:
+            pass
+
+        if cuda_major >= 13:
+            return "https://download.pytorch.org/whl/cu130", "onnxruntime-gpu>=1.21,<2"
+        elif cuda_major == 12:
+            return "https://download.pytorch.org/whl/cu124", "onnxruntime-gpu>=1.17,<=1.20.1"
+        else:  # CUDA 11
+            return "https://download.pytorch.org/whl/cu118", "onnxruntime-gpu>=1.14,<=1.16.3"
+
+    TORCH_INDEX, ORT_PKG = _pick_cuda_config()
+    TORCH_PKGS = ["torch", "torchvision", "torchaudio", "--index-url", TORCH_INDEX]
+    print(f"  GPU installer: using {TORCH_INDEX.split('/')[-1]} | {ORT_PKG}")
 
     def stream(args, step, steps, fallback_msg, check=True):
         """Run an installer subprocess, pushing per-package lines to progress."""
@@ -390,8 +454,11 @@ def _gpu_install_worker():
     STEPS = 4
     try:
         if uv:
+            cuda_tag = "cu12" if "cu12" in TORCH_INDEX else ("cu13" if "cu13" in TORCH_INDEX else "cu11")
+            cublas = f"nvidia-cublas-{cuda_tag}"
+            cudnn  = f"nvidia-cudnn-{cuda_tag}"
             stream([uv, "pip", "install", "--python", sys.executable,
-                    "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
+                    cublas, cudnn],
                    1, STEPS, "Downloading CUDA runtime libraries")
             # --reinstall forces replacement of ALL packages in this command,
             # including torchvision whose version number hasn't changed but
@@ -403,11 +470,14 @@ def _gpu_install_worker():
                     "onnxruntime"],
                    3, STEPS, "Removing CPU audio engine", check=False)
             stream([uv, "pip", "install", "--python", sys.executable,
-                    "onnxruntime-gpu"],
-                   4, STEPS, "Installing GPU audio engine")
+                    ORT_PKG],
+                   4, STEPS, f"Installing GPU audio engine ({ORT_PKG})")
         else:
+            cuda_tag = "cu12" if "cu12" in TORCH_INDEX else ("cu13" if "cu13" in TORCH_INDEX else "cu11")
+            cublas = f"nvidia-cublas-{cuda_tag}"
+            cudnn  = f"nvidia-cudnn-{cuda_tag}"
             stream([sys.executable, "-m", "pip", "install",
-                    "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
+                    cublas, cudnn],
                    1, STEPS, "Downloading CUDA runtime libraries")
             stream([sys.executable, "-m", "pip", "install",
                     "--force-reinstall"] + TORCH_PKGS,
@@ -415,8 +485,8 @@ def _gpu_install_worker():
             stream([sys.executable, "-m", "pip", "uninstall", "-y",
                     "onnxruntime"],
                    3, STEPS, "Removing CPU audio engine", check=False)
-            stream([sys.executable, "-m", "pip", "install", "onnxruntime-gpu"],
-                   4, STEPS, "Installing GPU audio engine")
+            stream([sys.executable, "-m", "pip", "install", ORT_PKG],
+                   4, STEPS, f"Installing GPU audio engine ({ORT_PKG})")
         _GPU.update(restart_needed=True, error=None)
         print("  GPU acceleration installed -- restart the helper to use it.")
     except subprocess.CalledProcessError as e:

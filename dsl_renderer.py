@@ -328,6 +328,58 @@ def validate_plan(plan, songs, sr=44100):
                     errors.append(f"{tag}: {fld} must be int bars 0..{MAX_XFADE_BARS}.")
                 elif isinstance(bars, int) and v > bars:
                     warnings.append(f"{tag}: {fld}={v} exceeds segment length {bars}.")
+
+    # ------------------------------------------------------------------
+    # Continuity check: a song must not jump to a non-consecutive position
+    # between its own appearances. If segment N ends song A at bar X, the
+    # next segment that also uses song A (regardless of what sits between
+    # them) must start at or after X -- i.e. it must continue forward, not
+    # teleport backward or skip a large gap.
+    #
+    # Why this matters: the listener tracks each song as a continuous
+    # narrative. Cutting song A from bar 20 to bar 60 in its next
+    # appearance sounds like a broken edit, not a DJ move.
+    #
+    # Tolerance: we allow up to 2 bars of gap (xfade rounding / pickup
+    # notes) and flag larger backward jumps as errors, larger forward
+    # skips as warnings (a skip of >=16 bars is suspicious; smaller skips
+    # are fine since the other song filled the space).
+    # ------------------------------------------------------------------
+    CONTINUITY_TOLERANCE = 2   # bars -- rounding / pickup leeway
+    SKIP_WARNING_BARS    = 16  # forward gap this big hints at a teleport
+
+    last_end = {}   # song_id -> (end_bar, segment_index)
+    for i, seg in enumerate(timeline, 1):
+        for ly in seg.get("layers", []):
+            sid = ly.get("song")
+            if sid == "FX" or not isinstance(ly.get("src_bars"), (list, tuple)):
+                continue
+            sb = ly["src_bars"]
+            if not (len(sb) == 2 and all(isinstance(v, int) for v in sb)):
+                continue
+            start_bar, end_bar = sb[0], sb[1]
+            if sid in last_end:
+                prev_end, prev_seg = last_end[sid]
+                gap = start_bar - prev_end   # negative = backward jump
+                if gap < -CONTINUITY_TOLERANCE:
+                    errors.append(
+                        f"segment {i}: song {sid} jumps BACKWARD from bar "
+                        f"{prev_end} (end of segment {prev_seg}) to bar "
+                        f"{start_bar} -- the listener was tracking this song "
+                        f"and will hear it as a broken edit. Either continue "
+                        f"forward from bar {prev_end}, or put song "
+                        f"{'B' if sid == 'A' else 'A'} between the two "
+                        f"appearances so the jump reads as a return, not a glitch."
+                    )
+                elif gap >= SKIP_WARNING_BARS:
+                    warnings.append(
+                        f"segment {i}: song {sid} skips forward {gap} bars "
+                        f"(from bar {prev_end} to bar {start_bar}) -- make sure "
+                        f"this is intentional and the other song appeared between "
+                        f"these two appearances to cover the gap."
+                    )
+            last_end[sid] = (end_bar, i)
+
     return errors, warnings
 
 
