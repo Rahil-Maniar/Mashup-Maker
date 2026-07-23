@@ -402,36 +402,43 @@ def _gpu_install_worker():
     # ---------------------------------------------------------------------------
     def _pick_cuda_config():
         """Return (torch_index_url, ort_gpu_pin) for this machine's GPU.
-        Strategy: ask nvidia-smi for the driver's max CUDA version, then map
-        to the newest torch index that doesn't exceed it. Falls back to cu121
-        (the widest-compat cu12 build) if detection fails.
-        ort pin rules (from onnxruntime release notes):
-          ort >= 1.21  requires CUDA 13+
-          ort 1.17-1.20 is CUDA 12 compatible
-          ort <= 1.16  is CUDA 11 compatible
+
+        IMPORTANT: torch wheel availability lags driver support by months.
+        cu130 wheels do NOT exist on PyPI yet (as of 2026-07), so even a
+        driver that supports CUDA 13 must use cu124 -- the newest published
+        index -- to avoid a failed install. Update NEWEST_AVAILABLE when
+        PyTorch publishes a newer CUDA build.
+
+        ort pin rules (onnxruntime release notes):
+          ort 1.17-1.20  CUDA 12 (cu121 / cu124)
+          ort <= 1.16    CUDA 11 (cu118)
         """
         import subprocess as _sp, re as _re
+
+        # Newest torch index with confirmed published wheels.
+        # Change this (and the ort rule above) when PyTorch ships cu130.
+        NEWEST_AVAILABLE = "cu124"
+
         cuda_major = 12  # safe fallback
         try:
             out = _sp.check_output(
                 ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
                 text=True, timeout=10).strip().splitlines()[0]
-            # driver version e.g. "556.12" -> CUDA support table:
-            # driver >= 576 -> CUDA 13, >= 525 -> CUDA 12, >= 450 -> CUDA 11
             drv = float(_re.search(r"[\d.]+", out).group())
-            if drv >= 576:
-                cuda_major = 13
-            elif drv >= 525:
-                cuda_major = 12
+            # driver >= 525 supports CUDA 12; >= 450 supports CUDA 11.
+            # Drivers >= 576 support CUDA 13 but we cap at NEWEST_AVAILABLE
+            # because cu130 torch wheels don't exist yet.
+            if drv >= 525:
+                cuda_major = 12  # covers driver >= 576 too until cu130 ships
+            elif drv >= 450:
+                cuda_major = 11
             else:
                 cuda_major = 11
         except Exception:
             pass
 
-        if cuda_major >= 13:
-            return "https://download.pytorch.org/whl/cu130", "onnxruntime-gpu>=1.21,<2"
-        elif cuda_major == 12:
-            return "https://download.pytorch.org/whl/cu124", "onnxruntime-gpu>=1.17,<=1.20.1"
+        if cuda_major >= 12:
+            return f"https://download.pytorch.org/whl/{NEWEST_AVAILABLE}", "onnxruntime-gpu>=1.17,<=1.20.1"
         else:  # CUDA 11
             return "https://download.pytorch.org/whl/cu118", "onnxruntime-gpu>=1.14,<=1.16.3"
 
@@ -773,6 +780,24 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print("=" * 60)
     print("  Mashup Studio helper is running.")
+    print(f"  [VERSION] companion.py build: 2026-07-23-r2 (gpu-stack-fix)")
+    # --- GPU stack diagnostic: printed every launch so logs are unambiguous ---
+    try:
+        from importlib.metadata import version as _v, PackageNotFoundError as _PNF
+        def _safe_ver(p):
+            try: return _v(p)
+            except _PNF: return "not installed"
+        _t   = _safe_ver("torch")
+        _tv  = _safe_ver("torchvision")
+        _ort = _safe_ver("onnxruntime-gpu")
+        _consistent = _torch_stack_consistent()
+        print(f"  [GPU] torch={_t}  torchvision={_tv}  onnxruntime-gpu={_ort}")
+        print(f"  [GPU] stack consistent: {_consistent}")
+        if not _consistent:
+            print("  [GPU] *** MISMATCH DETECTED — self-heal will start ***")
+    except Exception as _e:
+        print(f"  [GPU] diagnostic failed: {_e}")
+    # -------------------------------------------------------------------------
     if APP_URL:
         pair_url = f"{APP_URL.rstrip('/')}/#token={TOKEN}"
         print("  Opening the app in your browser...")
