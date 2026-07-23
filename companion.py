@@ -510,10 +510,14 @@ def _gpu_install_worker():
         _GPU.update(restart_needed=True, error=None)
         print("  GPU acceleration installed -- restart the helper to use it.")
     except subprocess.CalledProcessError as e:
-        _GPU["error"] = ((e.output or str(e)) or "")[-500:]
-        print("  GPU install failed (CPU mode still works fine).")
+        err = ((e.output or str(e)) or "")[-1000:]
+        _GPU["error"] = err
+        print("  GPU install failed. Reason:")
+        print(err)
+        print("  (CPU mode still works fine.)")
     except Exception as e:
         _GPU["error"] = str(e)
+        print(f"  GPU install failed with unexpected error: {e}")
     finally:
         _GPU["installing"] = False
         set_progress("idle")
